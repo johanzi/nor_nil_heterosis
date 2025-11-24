@@ -1,0 +1,85 @@
+---
+title: "High impact mutations drive DNA methylation variation after colonization of a novel habitat"
+author: "Johan Zicola"
+date: "`r format(Sys.time())`"
+output:
+  github_document:
+    toc: true
+  html_notebook:
+    toc: true
+  pdf_document:
+    toc: true
+  html_document:
+    toc: true
+    df_print: paged
+documentclass: article
+classoption: a4paper
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE)
+```
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Set so that long lines in R will be wrapped:
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 80), tidy = TRUE)
+```
+
+
+# Description
+
+This repository contains the bioinformatic analysis of the paper Zicola et al.
+
+
+# Phenotypic analysis growth chamber
+
+## R libraries
+
+```{r}
+
+```
+
+
+
+
+# Phenotypic analysis field trials
+
+## R libraries
+
+```{r}
+
+```
+
+# RNA-seq analysis
+
+## R libraries
+
+```{r}
+
+```
+
+# sRNA-seq analysis
+
+
+
+
+# Degradome analysis
+
+## R libraries
+
+```{r}
+
+```
+
+
+
+# Author
+
+* **Johan Zicola** - [johanzi](https://github.com/johanzi)
+
+# License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
+
+
