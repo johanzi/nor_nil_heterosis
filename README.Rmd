@@ -1,13 +1,11 @@
 ---
-title: "High impact mutations drive DNA methylation variation after colonization of a novel habitat"
+title: "NOR heterozygosity is associated with heterosis in maize"
 author: "Johan Zicola"
 date: "`r format(Sys.time())`"
 output:
   html_notebook:
     toc: true
   github_document:
-    toc: true
-  pdf_document:
     toc: true
   html_document:
     toc: true
@@ -30,6 +28,140 @@ knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 80), tidy = TRUE)
 # Description
 
 This repository contains the bioinformatic analysis of the paper Zicola et al.
+
+
+# NOR characterization
+
+## rRNA copy identification
+
+barrnap (v0.9) used in 2026 for annotation in plant https://www.nature.com/articles/s41597-026-07134-1#Abs1q
+
+*NB: Note that the version v1.10.6 does not offer eukaryotic mode (euk) but only fun/arc/bac. I tried it and it misses all 28S subunits and most 5.8S subunits. Do use v0.9 instead (supports eukaryotes).*
+
+### Install barrnap
+
+Website: https://github.com/tseemann/barrnap
+
+```{bash, eval=FALSE}
+
+conda create -n barrnap_v09 -c bioconda -c conda-forge barrnap=0.9
+
+source activate barrnap_v09
+
+barrnap --help
+Synopsis:
+  barrnap 0.9 - rapid ribosomal RNA prediction
+Author:
+  Torsten Seemann
+Usage:
+  barrnap [options] chr.fa
+  barrnap [options] < chr.fa
+  barrnap [options] - < chr.fa
+Options:
+  --help            This help
+  --version         Print version and exit
+  --citation        Print citation for referencing barrnap
+  --kingdom [X]     Kingdom: arc euk mito bac (default 'bac')
+
+
+```
+
+
+#### B73 NAM5 rDNA annotation
+
+```{bash, eval=FALSE}
+
+source activate barrnap_v09
+
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/rdna_annotation
+
+input_fasta="/mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/B73_NAM5/Zm-B73-REFERENCE-NAM-5.0.fa"
+
+srun -p medium --cpus-per-task=8 --time=04:00:00 barrnap --threads 8 --kingdom euk --outseq B73_NAM5_rRNA.fa  < $input_fasta > B73_NAM5_rRNA.gff
+
+wc -l B73_NAM5_rRNA.gff
+2796 B73_NAM5_rRNA.gff
+
+# If partial removed
+grep -v "partial" B73_NAM5_rRNA.gff | wc -l
+2507
+
+# Distribution on the 10 chromosomes
+cut -f1  B73_NAM5_rRNA.gff | grep "chr" | sort | uniq -c
+      7 chr1
+      6 chr10
+    221 chr2
+      2 chr3
+      4 chr4
+      4 chr5
+    793 chr6
+      4 chr7
+      1 chr8
+      3 chr9
+
+# Number for each type
+grep "5S" B73_NAM5_rRNA.gff | wc -l
+708
+
+grep "5.8" B73_NAM5_rRNA.gff | wc -l
+780
+
+grep "18S" B73_NAM5_rRNA.gff | wc -l
+700
+
+grep "28S" B73_NAM5_rRNA.gff | wc -l
+776
+
+```
+
+
+The gff file `B73_NAM5_rRNA.gff` can be loaded on a Jbrowse running B73 NAM5 genome and the subunits can clearly be seed on chromosome 6:
+
+![](images/snapshot_JBrowse_barrnap_annotation.png)
+
+
+
+
+### RegionA analysis
+
+The regionA was described by [Huang et al 2021](https://doi.org/10.1186/s13059-021-02448-2) as a 2.9 Mb presence/absence variation (PAV) that is found in B73 but not in Mo17. regionA can be used for genotyping our NIL material to ensure that the NOR introgression is present.
+
+By visualizing rDNA copies on JBrowse based on barrnap annotation of B73 NAM5 assembly, one can see a gap round chr6:17943647..20830948 with no rDNA subunits annotated.
+
+```{bash, eval=FALSE}
+
+# NOR coordinates
+echo -e "chr6\t16459135\t24391599" > NOR.bed
+
+# regionA coordinates
+echo -e "chr6\t17943647\t20830948" > regionA.bed
+
+# Coordinates of a gene present in regionA and used for PCR NOR genotyping
+echo -e "chr6\t20726343\t20735703" > Zm00001eb263160.bed
+
+```
+
+Load these three bed files on JBrowse (B73 NAM5 annotation) and the barrnap rDNA annotation gff file `B73_NAM5_rRNA.gff`:
+
+![](images/snapshot_JBrowse_regionA.png)
+
+We can retrieve the genes present in regionA:
+
+```{bash, eval=FALSE}
+
+
+
+```
+
+
+
+### Identify rRNA genes in B73 NAM5
+
+
+
+
+
+# #######################
 
 
 # Phenotypic analysis growth chamber
@@ -125,9 +257,6 @@ MPH <- ((F1-MPV)/MPV)
 
 col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
 
-#ggdotplot(df_DAS13, "line", "height", color="category", add="boxplot", palette=col, size=0.7, ylab="Height in cm") + rotate_x_text(45) + geom_hline(yintercept=MPV, linetype="dashed", color = "red")
-
-
 ggboxplot(df_DAS13, x="line", y="height",color="category",
           ylab="Height in cm", xlab="Genotype", add="dotplot", 
           palette=col, add.params = list(size = 1, alpha = 0.2), outlier.shape = NA) + 
@@ -138,6 +267,213 @@ ggboxplot(df_DAS13, x="line", y="height",color="category",
 ```
 
 ![](images/plant_height_DAS13.png)
+### Cluster by heterozygosity
+
+```{r}
+
+col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
+
+df_DAS13$category <- factor(df_DAS13$category, 
+                            levels = c("B73", "Mo17","B73xMo17", "b015","b131","b172","m047"))
+
+
+df_DAS13 %>% ggboxplot(
+  x = "NOR", y = "height", ylab = "Plant height (cm)", 
+  xlab = "NOR", color = "category", add = "dotplot", palette = col, add.params = list(size = 0.5, alpha = 0.2), outlier.shape = NA
+) + theme_bw() + expand_limits(y = 0) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Plant height 13 days after sowing") + theme(plot.title = element_text(hjust = 0.5)) +
+  geom_hline(yintercept = MPV, linetype = "dashed", color = "black") + theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+ scale_y_continuous(labels = scales::comma_format())
+
+
+```
+
+![](images/plant_height_DAS13_NOR.png)
+
+### Comparison heterozygous and homozygous NORs - 13DAS
+
+### B73xMo17
+
+```{r}
+
+df_sub <- df_DAS13 %>% filter(category %in% c("Mo17", "B73","B73xMo17"))
+
+# Uses the mixed model to adjust for confounding factors experiment
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+ contrast                  estimate   SE df t.ratio p.value
+ homozygous - heterozygous    -10.5 1.03 86 -10.256 <0.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+### B73xb015
+
+```{r}
+
+df_sub <- df_DAS13 %>% filter(category %in% c("b015", "B73","B73xb015"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+contrast                  estimate   SE df t.ratio p.value
+ homozygous - heterozygous     -4.2 1.19 86  -3.533  0.0007
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+
+### b131xB73
+
+```{r}
+
+df_sub <- df_DAS13 %>% filter(category %in% c("b131", "B73","b131xB73"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+ contrast                  estimate    SE df t.ratio p.value
+ homozygous - heterozygous    -5.93 0.958 86  -6.192 <0.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+### b172xB73
+
+```{r}
+
+df_sub <- df_DAS13 %>% filter(category %in% c("b172", "B73","b172xB73"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+ contrast                  estimate    SE  df t.ratio p.value
+ homozygous - heterozygous    -3.92 0.678 116  -5.780 <0.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+
+### B73xb172
+
+```{r}
+
+df_sub <- df_DAS13 %>% filter(category %in% c("b172", "B73","B73xb172"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+ contrast                  estimate    SE  df t.ratio p.value
+ homozygous - heterozygous    -3.92 0.678 116  -5.780 <0.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+### m047xMo17
+
+```{r}
+
+df_sub <- df_DAS13 %>% filter(category %in% c("m047", "Mo17","m047xMo17"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+ contrast                  estimate   SE   df t.ratio p.value
+ homozygous - heterozygous    -10.1 1.21 72.5  -8.322 <0.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+
 
 
 ## Summary at 22 DAS
@@ -485,6 +821,8 @@ Each block contains from 6 to 15 plants and each genotype is planted in 6 blocks
 
 ### 2024
 
+NILs and parental genotypes grown in 2024 in Shelter of Göttingen. Sown on 15.05.2024 and harvested on 26.11.2024.
+
 ![](images/field_plan_2024.png)
 
 ### 2025
@@ -541,12 +879,7 @@ saveRDS(field_data, "data/phenotyping/field_data.Rds")
 
 ```
 
-
-
-
-
 ## Plant height at flowering
-
 
 ### By year
 
@@ -1334,17 +1667,17 @@ Top NILs crosses compare to canonical F1
 
 NEBNext Ultra II Directional RNA Library Prep Kit (NEB #E7760). Three repetitions of each sample, paired-end reads (use the option "rna-strandness RF" in HISAT2).
 
-
 ```{bash, eval=FALSE}
 # Location fastq files
 /mnt/ceph-hdd/projects/scc_uanp_scholten/data/ngs_data/BGI_data/F22FTSEUHT1495_LIBfbksR_mRNA_sRNA_degradome_johan_doga/F22FTSEUHT1495_LIBfbksR_PE100
 ```
 
+Add tables once the SRR numbers are available.
 
 ## R libraries
 
-
 ```{r}
+
 library(tidyverse)
 library(ggpubr)
 library(gghighlight)
@@ -1352,6 +1685,7 @@ library(DESeq2)
 library(Biostrings)
 library(viridis)
 library(tximport)
+library(EnhancedVolcano)
 
 fasta_to_df <- function(path){
   fasta = readLines(path)
@@ -1381,9 +1715,10 @@ make_fasta <-  function(vector_sequence, path_output, sequence_names){
     }
 }
 
-# Source function for GO analysis
-
+# Source function for GO analysis (download repo on 
+# https://github.com/johanzi/GOMAP_maize_B73_NAM5
 source("P:/git_repositories/GOMAP_maize_B73_NAM5/go_functions.R", chdir = T)
+
 ```
 
 
@@ -1419,7 +1754,7 @@ fastqc -t 12 -o output_fastqc $i
 
 ```{bash, eval=FALSE}
 
-cd /usr/users/zicola/genomes/maize_B73/B73_NAM5/mapping_index_salmon
+cd /mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/maize_B73/B73_NAM5/mapping_index_salmon
 
 # Get fasta file of the genome assemblies
 server="http://ftp.ensemblgenomes.org/pub/plants/release-51"
@@ -1505,7 +1840,7 @@ sample_id=$(sed -n ${SLURM_ARRAY_TASK_ID}p sample_id.txt)
 fastq1="raw_data/${sample_id}/${sample_id}_L1_1.fq.gz"
 fastq2="raw_data/${sample_id}/${sample_id}_L1_2.fq.gz"
 
-path_index="/usr/users/zicola/genomes/maize_B73/B73_NAM5/mapping_index_salmon/B73_NAM5_index"
+path_index="/mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/maize_B73/B73_NAM5/mapping_index_salmon/B73_NAM5_index"
 output_dir="/usr/users/npghpc/data/NGS_data/BGI_data/F22FTSEUHT1495_LIBfbksR_mRNA_sRNA_degradome_johan_doga/F22FTSEUHT1495_LIBfbksR_PE100/salmon_mapping"
 
 salmon quant -p 12 --libType A -i $path_index -1 $fastq1 -2 $fastq2 \
@@ -1533,130 +1868,118 @@ The mapping rate is from 37.55% (B73xb172_3) to 88% (b172_3) (35/36 samples > 82
 
 The sample with low mapping rate is B73xb172_3. Perhaps there is contamination in this sample?
 
-### Check contamination with FastQ-screen
+#### Check for contamination in B73xb172_3
 
-https://www.bioinformatics.babraham.ac.uk/projects/fastq_screen/
+```{bash, eval=FALSE}
+# Convert fastq to fasta (fastq not used as input in NCBI FCS GX
+seqkit fq2fa B73xb172_3_L1_1.fq.gz > B73xb172_3_L1_1.fa
+```
 
-Doc: https://stevenwingett.github.io/FastQ-Screen/
+Upload one fasta file from the pair on usegalaxy.org and run NCBI FCS GX (use taxonomic identifier 4577, Zea mays).
 
 ```{bash, eval=FALSE}
 
-wget https://github.com/StevenWingett/FastQ-Screen/archive/refs/tags/v0.16.0.tar.gz
+# Out of the 8912799 sequence used as input, half (4046977) are tagged as contaminants
 
-tar zxvf FastQ-Screen-0.16.0.tar.gz
+wc -l NCBI_FCS_GX_B73xb172_3.tabular
+4046977 NCBI_FCS_GX_B73xb172_3.tabular
 
-cd FastQ-Screen-0.16.0
-
-# Confi file (see video https://www.youtube.com/watch?v=WqiKPRxHzNU&ab_channel=BabrahamBioinf)
-
-cp cp fastq_screen.conf.example fastq_screen.conf
-
-vim fastq_screen.conf
-# Add path dabase in ~/data
-
-# Get example
-https://www.bioinformatics.babraham.ac.uk/projects/fastq_screen/fastq_screen_test_dataset.tar.gz
-
-tar zxvf fastq_screen_test_dataset.tar.gz
-
-
-# Get genomes bowtie2 indexes (list in https://www.bioinformatics.babraham.ac.uk/projects/fastq_screen/Genome_Data/FastQ_Screen_Genomes/)
-./fastq_screen --get_genomes
-
-# There are 10 genomes, then vectors, adaptors, PhIX, Lamba, rRNA sequences
-
-# Adjust fastq_screen.conf based on https://www.bioinformatics.babraham.ac.uk/projects/fastq_screen/Genome_Data/FastQ_Screen_Genomes/fastq_screen.conf
-# and replace [FastQ_Screen_Genomes_Path] by /usr/users/zicola/bin/FastQ-Screen-0.16.0/FastQ_Screen_Genomes/
-
-# Add BOWTIE2 /sw/rev/25.04/cascadelake_opx_rocky8/linux-rocky8-cascadelake/gcc-14.2.0/bowtie2-2.5.4-ybfzsnsjgizzurcttrotmrahh4nasnd7/bin/bowtie2
-
-# Load bowtie2 before running fastq_screen
-module load gcc/14.2.0 bowtie2/2.5.4
-
-# Do test with the toydataset
-./fastq_screen --aligner bowtie2 fastq_screen_test_dataset/fqs_test_dataset.fastq.gz
-
+cut -f6 NCBI_FCS_GX_B73xb172_3.tabular | sort | uniq -c
+     25 anml:amphibians
+     33 anml:birds
+    233 anml:crustaceans
+     30 anml:echinoderms
+   2362 anml:insects
+    390 anml:mammals
+      3 anml:marsupials
+    144 anml:molluscs
+   5798 anml:primates
+     87 anml:reptiles
+     20 anml:rodents
+     43 arch:archaea
+      1 div
+ 139733 fung:ascomycetes
+3775115 fung:basidiomycetes
+  40927 fung:budding yeasts
+   9725 fung:chytrids
+  65947 fung:fungi
+    296 prok:a-proteobacteria
+     38 prok:bacteria
+    231 prok:b-proteobacteria
+    795 prok:CFB group bacteria
+    129 prok:cyanobacteria
+      8 prok:d-proteobacteria
+    986 prok:firmicutes
+    355 prok:g-proteobacteria
+      1 prok:green sulfur bacteria
+   3374 prok:high GC Gram+
+      6 prok:proteobacteria
+     46 prst:euglenoids
+      1 synt:synthetic
+     24 virs:eukaryotic viruses
+     66 virs:prokaryotic viruses
+      4 virs:viruses
 
 ```
 
+Biggest contamination mapped as fung:basidiomycetes.
 
 ```{bash, eval=FALSE}
-Using fastq_screen v0.16.0
-Reading configuration from '/home/uni08/zicola/bin/FastQ-Screen-0.16.0/fastq_screen.conf'
-Using '/sw/rev/25.04/cascadelake_opx_rocky8/linux-rocky8-cascadelake/gcc-14.2.0/bowtie2-2.5.4-ybfzsnsjgizzurcttrotmrahh4nasnd7/bin/bowtie2' as Bowtie 2 path
-Adding database Human
-Adding database Mouse
-Adding database Rat
-Adding database Drosophila
-Adding database Worm
-Adding database Yeast
-Adding database Arabidopsis
-Adding database Ecoli
-Adding database rRNA
-Adding database MT
-Adding database PhiX
-Adding database Lambda
-Adding database Vectors
-Adding database Adapters
-Using 8 threads for searches
-Option --subset set to 100000 reads
-Processing fqs_test_dataset.fastq.gz
-Counting sequences in fqs_test_dataset.fastq.gz
-Not making subset of 100000 since 1000 actual sequences is too low or close enough
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against Human
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against Mouse
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against Rat
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against Drosophila
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against Worm
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against Yeast
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against Arabidopsis
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against Ecoli
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against rRNA
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against MT
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against PhiX
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against Lambda
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against Vectors
-Searching fqs_test_dataset.fastq.gz_temp_subset.fastq against Adapters
-Perl module GD::Graph::bars not installed, skipping charts
-Processing complete
+
+cat NCBI_FCS_GX_B73xb172_3.tabular | cut -f8  | sort | uniq -c | sort -r
+ 581772 Psilocybe cubensis
+ 269545 Galerina marginata
+ 242192 Pleurotus citrinopileatus
+ 175816 Psilocybe cf. subviscida
+ 172653 Tricholomella constricta
+ 145340 Psilocybe azurescens
+ 141217 Lyophyllum atratum
+ 119133 Psilocybe mexicana
+ 108555 Pholiota molesta
+  96084 Agrocybe pediades
+  74506 Lepiota venenata
+  68586 Neoantrodia serialis
+  61626 Hericium coralloides
+  60146 Pleurotus sapidus
+  56678 Pholiota adiposa
+  49568 Mucidula mucida
+  41141 Panellus pusillus
+  40842 Calvatia gigantea
+  40159 Grifola frondosa
+  38536 Gloeostereum incarnatum
 
 ```
 
-(Actually optional) I also need to install GD perl module but I get again this gcc compiler issue with the annobin missing plugin (already discussed in thread on Element:)
+Highest contamination read number attributed to Psilocybe cubensis => 581k reads.
 
-```
-Hi Johan,
-we stopped installing the local gcc from Rocky 8, since it is quite old and most people want to use newer versions. Spack provides more recent versions that can better optimize for our hardware.
-I can't say how much effort it would be to add annobin, if that can work as an independent module or if it would need to be integrated into the gcc modules or might even require a recompile of gcc. Changing our current compilers would very likely be a huge effort and would invalidate all or most of the finetuning and testing our software team had to do with the current modules.
-I think it would be easiest if you installed it in your home directory via the spack-user module.
-```
-
-
-No container available yet (https://github.com/StevenWingett/FastQ-Screen/issues/21)
+Filter out contaminant reads:
 
 ```{bash, eval=FALSE}
-cd /usr/users/zicola/PROJECTS/NOR_NIL_RNAseq/data/conta_check_B73xb172_3
 
-module load gcc/14.2.0 bowtie2/2.5.4
-
-srun -p medium --time=00:20:00 --cpus-per-task=8 /usr/users/zicola/bin/FastQ-Screen-0.16.0/fastq_screen --conf /usr/users/zicola/bin/FastQ-Screen-0.16.0/fastq_screen.conf --aligner bowtie2 /usr/users/npghpc/data/NGS_data/BGI_data/F22FTSEUHT1495_LIBfbksR_mRNA_sRNA_degradome_johan_doga/F22FTSEUHT1495_LIBfbksR_PE100/raw_data/B73xb172_3/B73xb172_3_L1_1.fq.gz
+# Get read id and filter out fastq files
+seqkit grep -v -f id_contaminants.txt B73xb172_3_L1_1.fq.gz > B73xb172_3_L1_1.cleaned.fq
+seqkit grep -v -f id_contaminants.txt B73xb172_3_L1_2.fq.gz > B73xb172_3_L1_2.cleaned.fq
 
 ```
 
-![](images/B73xb172_3_contamination.png)
 
-Compare with a sample with high mapping rate (b015_1)
+#.
 
-```{r}
+## A/T Mo17/B73 rRNA expression
 
-module load gcc/14.2.0 bowtie2/2.5.4
 
-srun -p medium --time=00:20:00 --cpus-per-task=8 /usr/users/zicola/bin/FastQ-Screen-0.16.0/fastq_screen --conf /usr/users/zicola/bin/FastQ-Screen-0.16.0/fastq_screen.conf --aligner bowtie2 /usr/users/npghpc/data/NGS_data/BGI_data/F22FTSEUHT1495_LIBfbksR_mRNA_sRNA_degradome_johan_doga/F22FTSEUHT1495_LIBfbksR_PE100/raw_data/b015_1/b015_1_L1_1.fq.gz
-```
 
+
+#.
+
+
+
+#.
 
 
 ## Import data in DESeq2
+
+DESeq2 (v1.46.0)
 
 ```{bash, eval=FALSE}
 # Copy quant file in project folder
@@ -1664,36 +1987,81 @@ cp -r /usr/users/npghpc/data/NGS_data/BGI_data/F22FTSEUHT1495_LIBfbksR_mRNA_sRNA
 
 ```
 
-
 ```{r }
 # Upload the coldata file for all experiment
-coldata <- read.table ("data/coldata.txt", header=T)
+coldata <- read.table ("data/rnaseq/coldata.txt", header=T)
 
 # Convert variables as factor
 coldata[] <- lapply(coldata, as.factor)
 
 # Import tx2gene file
-tx2gene <- read.table("data/tx2gene.txt", quote="\"", comment.char="")
+tx2gene <- read.table("data/rnaseq/tx2gene.txt", quote="\"", comment.char="")
 
 # Path to quant.sf files
-files <- file.path("data/salmon_mapping", coldata$sample, "quant.sf")
+files <- file.path("data/rnaseq/salmon_mapping", coldata$sample, "quant.sf")
 names(files) <- coldata$sample
 all(file.exists(files))
 
 # Import salmon data
 txi <- tximport(files, type="salmon", tx2gene=tx2gene)
 
-saveRDS(txi, "data/txi.rds")
+# Check if sample names match in txi and coldata
+colnames(txi$abundance)== coldata$sample
+
+saveRDS(txi, "data/rnaseq/txi.rds")
 
 #txi_df <- as.data.frame(txi)
-
 ```
 
-## PCA
+### PCA
 
 ```{r }
 
-txi <- readRDS("data/txi.rds")
+# Upload the coldata file for all experiment
+coldata <- read.table ("data/rnaseq/coldata.txt", header=T)
+
+# Convert variables as factor
+coldata[] <- lapply(coldata, as.factor)
+
+txi <- readRDS("data/rnaseq/txi.rds")
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ 1)
+
+# Variance stabilizing transformation
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "genotype"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+ggplot(pcaData, aes(PC1, PC2, color = genotype, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+
+```
+
+![](images/PCA_salmon.png)
+
+Replicates cluster tightly together. B73xb015 and b015 cluster separately, probably due to the fact they were collected at a different time-point and dates (9 DAS for b015 and 11 DAS for B73xb015) while all others were collected at 12 DAS.
+
+
+```{r}
 
 # Create a DESeq2 matrix
 dds <- DESeqDataSetFromTximport(txi,
@@ -1709,139 +2077,305 @@ pcaData <- plotPCA(vsd, intgroup=c("sample", "NOR"), returnData=TRUE)
 # Get percentage variation
 percentVar <- round(100 * attr(pcaData, "percentVar"))
 
-ggplot(pcaData, aes(PC1, PC2, color=NOR, label = sample)) +
-    xlab(paste0("PC1: ",percentVar[1],"% variance")) +
-    ylab(paste0("PC2: ",percentVar[2],"% variance")) +  
-    theme_bw() + geom_text(size = 3)
+col <- c("#1b9e77","#d95f02")
 
+ggplot(pcaData, aes(PC1, PC2, color = NOR, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  scale_color_manual(values=col) + 
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
 ```
 
-![](images/PCA_salmon.png)
-
-Replicates cluster tightly together.
-
-## HISAT2
-
-### Index
-
-```{bash, eval=FALSE}
-
-wget https://raw.githubusercontent.com/DaehwanKimLab/hisat2/master/hisat2_extract_splice_sites.py
-wget https://raw.githubusercontent.com/DaehwanKimLab/hisat2/master/hisat2_extract_exons.py
-cp ../Zea_mays.Zm-B73-REFERENCE-NAM-5.0.51.gtf .
-
-python hisat2_extract_exons.py Zea_mays.Zm-B73-REFERENCE-NAM-5.0.51.gtf > Zea_mays.Zm-B73-REFERENCE-NAM-5.0.51.exon
-
-python hisat2_extract_splice_sites.py Zea_mays.Zm-B73-REFERENCE-NAM-5.0.51.gtf > Zea_mays.Zm-B73-REFERENCE-NAM-5.0.51.ss
-
-module load hisat2
-
-srun --time=48:00:00 --mem=200G --cpus-per-task=16 hisat2-build -p 16 --exon Zea_mays.Zm-B73-REFERENCE-NAM-5.0.51.exon --ss Zea_mays.Zm-B73-REFERENCE-NAM-5.0.51.ss ../Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna.toplevel.fa B73_NAM5
-
-```
-
-### Mapping
-
-```{bash, eval=FALSE}
-while read i; do
-  read1="${i}_1.fq.gz"
-  read2="${i}_2.fq.gz"
-  output_name=$(basename $i | cut -d_ -f1-2)
-  echo "hisat2 -p 12 --rf --dta -x reference_genome/B73_NAM5 -1 $read1 -2 $read2 | samtools view -bS -F 4 - | samtools sort - -o mapped_bam/${output_name}.bam"
-  hisat2 -p 12 --rf --dta -x reference_genome/B73_NAM5 -1 $read1 -2 $read2 | samtools view -bS -F 4 - | samtools sort - -o mapped_bam/${output_name}.bam
-done <<<$(find raw_fastq -name "*fq.gz" | cut -d_ -f1-5 | sort | uniq)
-```
-
-
-### Read count
-
-```{bash, eval=FALSE}
-conda install htseq
-
-# Convert bam to sam read sorted
-for i in *bam; do
-  samtools sort -n $i -o ${i%.*}.sorted.sam # -M to sort by position (coordinate), -n to sort by name
-done 
-
-# Count on each file
-for i in *sam; do
-  if [ -e ${i%.*}.count ]; then
-    echo "${i%.*}.count already exist, skip $i" 
-  else
-    htseq-count -f sam -r name -s reverse $i /media/kamelin/Data/NOR_maize_project/RNA-seq/reference_genome/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.51.sorted.gtf > ${i%.*}.count 
-  fi
-done
-
-```
-
-Now we need to merge the reads to one file using a bash merge script. 
-
-Get script from Johan's Git:
-```{bash, eval=FALSE}
-wget https://raw.githubusercontent.com/johanzi/RNA-seq_pipeline/master/merge_counts.sh
-```
-
-Create list_file_counts.txt and sample_names.txt file, use the library code for sample names.
-```{bash, eval=FALSE}
-for i in *count; do
-  echo $i >> list_file_counts.txt
-  echo $i | cut -d. -f1 >> sample_names.txt
-done
-```
-
-Merge created files.
-```{bash, eval=FALSE}
-bash merge_counts.sh list_file_counts.txt sample_names.txt > cts.txt # txt file for counts matrix
-```
-
-
-### PCA
-
-```{r}
-cts <- read.delim("data/dennis_data/cts.txt", row.names=1)
-
-# Sample
-
-coldata <- read.delim("data/coldata.txt")
-
-all(colnames(cts) == coldata$sample)
-
-
-dds <- DESeqDataSetFromMatrix(countData = cts,
-                              colData = coldata,
-                              design= ~ 1)
-
-# Variance stabilizing transformation
-vsd <- vst(dds, blind=TRUE)
-
-# Create PCA
-pcaData <- plotPCA(vsd, intgroup=c("sample", "genotype"), returnData=TRUE)
-
-# Get percentage variation
-percentVar <- round(100 * attr(pcaData, "percentVar"))
-
-ggplot(pcaData, aes(PC1, PC2, color=genotype, label = sample)) +
-    xlab(paste0("PC1: ",percentVar[1],"% variance")) +
-    ylab(paste0("PC2: ",percentVar[2],"% variance")) +  
-    theme_bw() + geom_text(size = 4)
-
-```
-
-![](images/PCA_HISAT2.png)
-
-
+![](images/PCA_salmon_NOR.png)
 
 ## Genes differentially expressed
 
 ### Homozygous vs heterozygous NORs
 
-
 ```{r}
 
+txi <- readRDS("data/rnaseq/txi.rds")
 
+# Upload the coldata file for all experiment
+coldata <- read.table ("data/rnaseq/coldata.txt", header=T)
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ NOR)
+
+# Remove the canonical F1
+dds <- dds[,!colnames(dds) %in% c("B73xMo17_1","B73xMo17_2","B73xMo17_3")]
+
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"), alpha = 0.05)
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/rnaseq/DEG_NOR_hom_vs_het.txt", 
+            quote=FALSE, row.names=FALSE, sep="\t")
 
 ```
 
+
+```
+out of 33645 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 194, 0.58%
+LFC < 0 (down)     : 377, 1.1%
+outliers [1]       : 0, 0%
+low counts [2]     : 18120, 54%
+(mean count < 60)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+```
+
+571 genes are differentially expressed.
+
+#### Volcano plot
+
+```{r}
+
+EnhancedVolcano(res,
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "padj",
+  axisLabSize = 12,
+  xlab = bquote(~ Log[2] ~ Fold ~ Change),
+  ylab = bquote(~ -Log[10] ~ P ~ Value),
+  pCutoff = 0.05,
+  FCcutoff = 2,
+  labSize = 4,
+  title = "",
+  subtitle = "heterozygous vs homozygous",
+  legendPosition = "bottom",
+  legendLabSize = 10,
+  legendIconSize = 4.0,
+  drawConnectors = TRUE,
+  widthConnectors = 0.75
+)
+
+```
+
+Only one gene with log2FC < 2 = Zm00001eb396230
+
+#### GO analysis
+
+```{r}
+
+list_ego_results <- ego_analysis(sigDEG$geneID)
+
+lapply(list_ego_results, function(x) sum(x@result$p.adjust < 0.05))
+
+df_ego_analysis <- enrichResult2dataframe(list_ego_results)
+
+df_ego_analysis_significant <- df_ego_analysis %>% dplyr::filter(p.adjust < 0.05)
+```
+
+
+
+```{r}
+
+df_ego_analysis_significant %>% arrange(qvalue) %>% filter(ontology=="BP") %>%
+  head(10) %>%
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("BP GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+
+df_ego_analysis_significant %>% arrange(qvalue) %>% filter(ontology=="MF") %>%
+  head(10) %>%
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("MF GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+
+df_ego_analysis_significant %>% arrange(qvalue) %>% filter(ontology=="CC") %>%
+  head(10) %>%
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("CC GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+```
+
+
+
+```{r}
+
+```
+
+
+
+### DEGs without b015 and B73xb015
+
+### Homozygous vs heterozygous NORs
+
+```{r}
+
+txi <- readRDS("data/txi.rds")
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ NOR)
+
+# Remove the canonical F1
+dds <- dds[, !colnames(dds) %in% c("B73xMo17_1", "B73xMo17_2", "B73xMo17_3", "b015_1", "b015_2", "b015_3", "B73xb015_1", "B73xb015_2", "B73xb015_3")]
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"), alpha = 0.05)
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/RNAseq/DEGs_wo_b015.txt", 
+            quote=FALSE, row.names=FALSE, sep="\t")
+```
+
+278 genes are differentially expressed.
+
+#### Volcano plot
+
+```{r}
+
+EnhancedVolcano(res,
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "padj",
+  axisLabSize = 12,
+  xlab = bquote(~ Log[2] ~ Fold ~ Change),
+  ylab = bquote(~ -Log[10] ~ P ~ Value),
+  pCutoff = 0.05,
+  FCcutoff = 2,
+  labSize = 4,
+  title = "",
+  subtitle = "heterozygous vs homozygous",
+  legendPosition = "bottom",
+  legendLabSize = 10,
+  legendIconSize = 4.0,
+  drawConnectors = TRUE,
+  widthConnectors = 0.75
+)
+
+```
+
+Only one gene with log2FC < 2 = Zm00001eb396230
+
+#### GO analysis
+
+```{r}
+
+list_ego_results <- ego_analysis(sigDEG$geneID)
+
+lapply(list_ego_results, function(x) sum(x@result$p.adjust < 0.05))
+
+df_ego_analysis <- enrichResult2dataframe(list_ego_results)
+
+df_ego_analysis_significant <- df_ego_analysis %>% dplyr::filter(p.adjust < 0.05)
+```
+
+
+
+```{r}
+
+df_ego_analysis_significant %>% arrange(qvalue) %>% filter(ontology=="BP") %>%
+  head(10) %>%
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("BP GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+
+df_ego_analysis_significant %>% arrange(qvalue) %>% filter(ontology=="MF") %>%
+  head(10) %>%
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("MF GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+
+df_ego_analysis_significant %>% arrange(qvalue) %>% filter(ontology=="CC") %>%
+  head(10) %>%
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("CC GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+```
 
 
 # GO analysis
@@ -2049,7 +2583,6 @@ grep -oP '(?<=ID=)\w+' genes-chr6-16607976..24007754_genes_within_NOR.gff3 | gre
 
 ```{r}
 
-
 gene_ID <- read.delim("genes_ID_chr6_16607976_24007754_genes_within_NOR.txt", header=F)
 # 180
 
@@ -2174,30 +2707,4122 @@ gene_ID_683 <- read.delim("data/venn_overlap_top5_all_B73_like.txt", header=F)
 base::intersect(gene_ID_NOR$V1, gene_ID_683$V1)
 
 ```
+
 No common genes with the 180 NOR genes and the list of NA genes from the B73 NIL F1 intersect.
 
 
 
+# PCA and DEG analysis for each cross
 
-
-
-# ############################
-# sRNA-seq analysis
-# ############################
-
-
-# ############################
-# Degradome analysis
-# ############################
-
-
-## R libraries
+## B73, Mo17, B73xMo17
 
 ```{r}
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ NOR)
+
+
+selection <- coldata %>% filter(genotype %in% c("B73","Mo17","B73xMo17")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+# Variance stabilizing transformation
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "NOR"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+col <- c("#1b9e77","#d95f02")
+
+ggplot(pcaData, aes(PC1, PC2, color = NOR, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  scale_color_manual(values=col) + 
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/rnaseq/sig_DEG_B73_Mo17_B73xMo17.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+```
+
+661
+
+![](images/PCA_RNA_B73_Mo17_B73xMo17.png)
+
+
+
+## b015, B73, B73xb015
+
+```{r}
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ NOR)
+
+
+selection <- coldata %>% filter(genotype %in% c("b015","B73","B73xb015")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "NOR"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+col <- c("#1b9e77","#d95f02")
+
+ggplot(pcaData, aes(PC1, PC2, color = NOR, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  scale_color_manual(values=col) + 
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/rnaseq/sig_DEG_B73_b015_B73xb015.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+
+```
+
+![](images/PCA_RNA_B73_b015_B73xb015.png)
+
+
+## b131, B73, b131xB73
+
+```{r}
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ NOR)
+
+
+selection <- coldata %>% filter(genotype %in% c("b131","B73","b131xB73")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "NOR"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+col <- c("#1b9e77","#d95f02")
+
+ggplot(pcaData, aes(PC1, PC2, color = NOR, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  scale_color_manual(values=col) + 
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/rnaseq/sig_DEG_b131_B73_b131xB73.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
 
 ```
 
 
+![](images/PCA_RNA_b131_B73_b131xB73.png)
+
+
+## b172, B73, b172xB73
+
+```{r}
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ NOR)
+
+
+selection <- coldata %>% filter(genotype %in% c("b172","B73","b172xB73")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "NOR"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+ggplot(pcaData, aes(PC1, PC2, color = NOR, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/rnaseq/sig_DEG_b172_B73_b172xB73.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+```
+
+## b172, B73, B73xb172
+
+```{r}
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ NOR)
+
+
+selection <- coldata %>% filter(genotype %in% c("b172","B73","B73xb172")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "NOR"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+ggplot(pcaData, aes(PC1, PC2, color = NOR, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/rnaseq/sig_DEG_b172_B73_B73xb172.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+```
+
+## b172, B73, B73xb172, b172xB73
+
+```{r}
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ NOR)
+
+
+selection <- coldata %>% filter(genotype %in% c("b172","B73","B73xb172","b172xB73")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "NOR"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+col <- c("#1b9e77","#d95f02")
+
+ggplot(pcaData, aes(PC1, PC2, color = NOR, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  scale_color_manual(values=col) + 
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/rnaseq/sig_DEG_b172_B73_B73xb172_b172xB73.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+```
+
+
+![](images/PCA_RNA_b172_B73_B73xb172_b172xB73.png)
+
+## Mo17, m047, m047xMo17
+
+
+```{r}
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ NOR)
+
+selection <- coldata %>% filter(genotype %in% c("Mo17","m047","m047xMo17")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "NOR"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+
+col <- c("#1b9e77","#d95f02")
+
+ggplot(pcaData, aes(PC1, PC2, color = NOR, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  scale_color_manual(values=col) + 
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/rnaseq/sig_DEG_Mo17_m047_m047xMo17.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+```
+
+
+![](images/PCA_RNA_Mo17_m047_m047xMo17.png)
+
+## Overlap DEGs
+
+sig_DEG_b131_B73_b131xB73.txt
+sig_DEG_b172_B73_b172xB73.txt
+sig_DEG_b172_B73_B73xb172.txt
+sig_DEG_b172_B73_B73xb172_b172xB73.txt
+sig_DEG_B73_b015_B73xb015.txt
+sig_DEG_B73_Mo17_B73xMo17.txt
+sig_DEG_Mo17_m047_m047xMo17.txt
+
+
+```{r}
+
+list_files <- c("sig_DEG_b131_B73_b131xB73.txt","sig_DEG_b172_B73_b172xB73.txt","sig_DEG_b172_B73_B73xb172.txt","sig_DEG_b172_B73_B73xb172_b172xB73.txt","sig_DEG_B73_b015_B73xb015.txt","sig_DEG_B73_Mo17_B73xMo17.txt","sig_DEG_Mo17_m047_m047xMo17.txt")
+
+
+DEG_list <- list()
+
+for (i in 1:length(list_files)){
+  DEG_list[[list_files[[i]]]] <- read.csv(paste("data/rnaseq/",list_files[[i]], sep=""), sep="\t")
+}
+  
+# Check overlap between b131_B73_b131xB73 B73_Mo17_B73xMo17 and b172_B73_B73xb172_b172xB73
+
+int1 <- intersect(DEG_list$sig_DEG_B73_Mo17_B73xMo17.txt$geneID, DEG_list$sig_DEG_b131_B73_b131xB73.txt$geneID)
+# 55
+
+int2 <- intersect(int1, DEG_list$sig_DEG_b172_B73_B73xb172_b172xB73.txt$geneID)
+# 15
+```
+
+15 DEGs are common across the 3 analyses
+
+
+### GO analysis
+
+```{r}
+
+list_ego_results <- ego_analysis(int2)
+
+lapply(list_ego_results, function(x) sum(x@result$p.adjust < 0.05))
+
+$ego_BP
+[1] 10
+
+$ego_CC
+[1] 2
+
+$ego_MF
+[1] 8
+
+df_ego_analysis <- enrichResult2dataframe(list_ego_results)
+
+df_ego_analysis_significant <- df_ego_analysis %>% dplyr::filter(p.adjust < 0.05)
+
+
+df_ego_analysis_significant %>% filter(ontology=="BP") %>% arrange(qvalue) %>% 
+  head(10) %>% 
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("BP GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+
+df_ego_analysis_significant %>% filter(ontology=="MF") %>% arrange(qvalue) %>% 
+  head(10) %>% 
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("MF GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+df_ego_analysis_significant %>% filter(ontology=="CC") %>% arrange(qvalue) %>% 
+  head(10) %>% 
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("CC GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+
+```
+
+Check intersect across all analyses
+
+```{r}
+
+       
+DEG_list_geneID_cleaned <- DEG_list_geneID[!
+
+DEG_list_geneID <- lapply(DEG_list_geneID, `[[`, "geneID")
+
+
+intersect <- Reduce(intersect, DEG_list_geneID)
+       
+```
+
+
+
+# Time-series style
+
+```{r}
+txi <- readRDS("data/rnaseq/txi.rds")
+
+# Upload the coldata file for all experiment
+coldata <- read.table ("data/rnaseq/coldata.txt", header=T)
+
+```
+
+
+## B73, Mo17, B73xMo17
+
+```{r}
+require(DEGreport)
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ genotype)
+
+
+selection <- coldata %>% filter(genotype %in% c("B73","Mo17","B73xMo17")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+# Get rid of unused genotypes
+colData(dds)$genotype <- droplevels(colData(dds)$genotype)
+
+# Likelihood ratio test
+dds_lrt <- DESeq(dds, test="LRT", reduced = ~ 1)
+
+# Get results
+res_LRT <- results(dds_lrt)
+
+sigDEG_ID <- as.data.frame(res_LRT) %>% rownames_to_column("geneID") %>% 
+  filter(padj < 0.05) %>% pull(geneID)
+
+# Subset DESeqDataSet to only include DEGs only
+dds_subset <- dds[rownames(dds) %in% sigDEG_ID, ]
+
+# Apply rlog transformation to the subsetted DESeqDataSet
+rld <- rlog(dds_subset) #, blind = TRUE)
+
+# Extract the rlog values as a matrix
+rlog_values <- assay(rld)
+
+# If you want the rlog values as a data frame, you can do this:
+rlog_df <- as.data.frame(rlog_values)
+
+# Use the `degPatterns` function from the 'DEGreport' package to show gene clusters across sample groups
+cluster_rlog <- rlog_df[sigDEG_ID, ]
+
+design <- as.data.frame(colData(dds))
+
+design$genotype <- factor(design$genotype,levels = c("B73", "B73xMo17", "Mo17"))
+
+clusters <- degPatterns(cluster_rlog, metadata = design, time = "genotype", col=NULL)
+
+saveRDS(clusters, "data/rnaseq/clusters_B73_Mo17_B73xMo17.Rds")
+
+clusters <- readRDS("data/rnaseq/clusters_B73_Mo17_B73xMo17.Rds")
+
+cluster_up_het <- clusters$df[clusters$df$cluster==3,]
+
+cluster_down_het <- clusters$df[clusters$df$cluster==4,]
+
+p <- clusters$plot
+p$layers$geom_point$aes_params$alpha <- 0.05
+p$layers$geom_line$aes_params$alpha <- 0.05
+p1 <- p + scale_color_manual(values = "black") + theme(legend.position = "none")
+
+ggsave("images/clusters_B73_Mo17_B73xMo17.png", p1, width = 8, height = 6)
+
+
+
+
+```
+
+![](images/clusters_B73_Mo17_B73xMo17.png)
+
+
+
+
+
+```{r}
+list_ego_results <- ego_analysis(cluster_3$genes)
+
+lapply(list_ego_results, function(x) sum(x@result$p.adjust < 0.05))
+
+df_ego_analysis <- enrichResult2dataframe(list_ego_results)
+
+df_ego_analysis_significant <- df_ego_analysis %>% dplyr::filter(p.adjust < 0.05)
+
+
+df_ego_analysis_significant %>% filter(ontology=="BP") %>% arrange(qvalue) %>% 
+  head(10) %>% 
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("BP GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+
+df_ego_analysis_significant %>% filter(ontology=="MF") %>% arrange(qvalue) %>% 
+  head(10) %>% 
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("MF GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+df_ego_analysis_significant %>% filter(ontology=="CC") %>% arrange(qvalue) %>% 
+  head(10) %>% 
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("CC GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+
+```
+
+
+```{r}
+list_ego_results <- ego_analysis(cluster_4$genes)
+
+lapply(list_ego_results, function(x) sum(x@result$p.adjust < 0.05))
+
+df_ego_analysis <- enrichResult2dataframe(list_ego_results)
+
+df_ego_analysis_significant <- df_ego_analysis %>% dplyr::filter(p.adjust < 0.05)
+
+
+df_ego_analysis_significant %>% filter(ontology=="BP") %>% arrange(qvalue) %>% 
+  head(10) %>% 
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("BP GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+
+df_ego_analysis_significant %>% filter(ontology=="MF") %>% arrange(qvalue) %>% 
+  head(10) %>% 
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("MF GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+df_ego_analysis_significant %>% filter(ontology=="CC") %>% arrange(qvalue) %>% 
+  head(10) %>% 
+  mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+  ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+  geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+  ylab("GO term") + 
+  ggtitle("CC GO enrichment") +
+  theme_bw() +
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_size_area(max_size = 10) +
+  scale_color_viridis()
+
+
+```
+
+## b015, B73, B73xb015
+
+```{r}
+require(DEGreport)
+
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ genotype)
+
+selection <- coldata %>% filter(genotype %in% c("B73","b015","B73xb015")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+# Get rid of unused genotypes
+colData(dds)$genotype <- droplevels(colData(dds)$genotype)
+
+# Likelihood ratio test
+dds_lrt <- DESeq(dds, test="LRT", reduced = ~ 1)
+
+# Get results
+res_LRT <- results(dds_lrt)
+
+sigDEG_ID <- as.data.frame(res_LRT) %>% rownames_to_column("geneID") %>% 
+  filter(padj < 0.05) %>% pull(geneID)
+
+# Subset DESeqDataSet to only include DEGs only
+dds_subset <- dds[rownames(dds) %in% sigDEG_ID, ]
+
+# Apply rlog transformation to the subsetted DESeqDataSet
+rld <- rlog(dds_subset) #, blind = TRUE)
+
+# Extract the rlog values as a matrix
+rlog_values <- assay(rld)
+
+# If you want the rlog values as a data frame, you can do this:
+rlog_df <- as.data.frame(rlog_values)
+
+# Use the `degPatterns` function from the 'DEGreport' package to show gene clusters across sample groups
+cluster_rlog <- rlog_df[sigDEG_ID, ]
+
+design <- as.data.frame(colData(dds))
+
+design$genotype <- factor(design$genotype,levels = c("B73", "B73xb015", "b015"))
+
+clusters <- degPatterns(cluster_rlog, metadata = design, time = "genotype", col=NULL)
+
+saveRDS(clusters, "data/rnaseq/clusters_B73_b015_B73xb015.Rds")
+
+clusters <- readRDS("data/rnaseq/clusters_B73_b015_B73xb015.Rds")
+
+cluster_up_het <- clusters$df[clusters$df$cluster==3,]
+
+cluster_down_het <- clusters$df[clusters$df$cluster==4,]
+
+p <- clusters$plot
+p$layers$geom_point$aes_params$alpha <- 0.05
+p$layers$geom_line$aes_params$alpha <- 0.05
+p1 <- p + scale_color_manual(values = "black") + theme(legend.position = "none")
+
+ggsave("images/clusters_B73_b015_B73xb015.png", p1, width = 8, height = 6)
+
+```
+
+![](images/clusters_B73_b015_B73xb015.png)
+
+## b131, B73, b131xB73
+
+```{r}
+require(DEGreport)
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ genotype)
+
+selection <- coldata %>% filter(genotype %in% c("B73","b131","b131xB73")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+# Get rid of unused genotypes
+colData(dds)$genotype <- droplevels(colData(dds)$genotype)
+
+# Likelihood ratio test
+dds_lrt <- DESeq(dds, test="LRT", reduced = ~ 1)
+
+# Get results
+res_LRT <- results(dds_lrt)
+
+sigDEG_ID <- as.data.frame(res_LRT) %>% rownames_to_column("geneID") %>% 
+  filter(padj < 0.05) %>% pull(geneID)
+
+# Subset DESeqDataSet to only include DEGs only
+dds_subset <- dds[rownames(dds) %in% sigDEG_ID, ]
+
+# Apply rlog transformation to the subsetted DESeqDataSet
+rld <- rlog(dds_subset) #, blind = TRUE)
+
+# Extract the rlog values as a matrix
+rlog_values <- assay(rld)
+
+# If you want the rlog values as a data frame, you can do this:
+rlog_df <- as.data.frame(rlog_values)
+
+# Use the `degPatterns` function from the 'DEGreport' package to show gene clusters across sample groups
+cluster_rlog <- rlog_df[sigDEG_ID, ]
+
+design <- as.data.frame(colData(dds))
+
+design$genotype <- factor(design$genotype,levels = c("b131", "b131xB73", "B73"))
+
+clusters <- degPatterns(cluster_rlog, metadata = design, time = "genotype", col=NULL)
+
+saveRDS(clusters, "data/rnaseq/clusters_B73_b131_b131xB73.Rds")
+
+clusters <- readRDS("data/rnaseq/clusters_B73_b131_b131xB73.Rds")
+
+cluster_down_het <- clusters$df[clusters$df$cluster==3,]
+
+cluster_up_het <- clusters$df[clusters$df$cluster==4,]
+
+p <- clusters$plot
+p$layers$geom_point$aes_params$alpha <- 0.05
+p$layers$geom_line$aes_params$alpha <- 0.05
+p1 <- p + scale_color_manual(values = "black") + theme(legend.position = "none")
+
+ggsave("images/clusters_B73_b131_b131xB73.png", p1, width = 8, height = 6)
+
+```
+
+![](images/clusters_B73_b131_b131xB73.png)
+
+
+```{r}
+
+clusters <- readRDS("data/rnaseq/clusters_B73_b131_b131xB73.Rds")
+
+degPlotCluster(clusters$normalized, genotype, color = NULL, min_genes = 10, process = FALSE, points = TRUE, boxes = TRUE, smooth = TRUE, lines = TRUE, facet = TRUE, cluster_column = "cluster", prefix_title = "Group: " )
+```
+
+
+
+## b172, B73, B73xb172
+
+```{r}
+require(DEGreport)
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ genotype)
+
+selection <- coldata %>% filter(genotype %in% c("b172","B73","B73xb172")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+# Get rid of unused genotypes
+colData(dds)$genotype <- droplevels(colData(dds)$genotype)
+
+# Likelihood ratio test
+dds_lrt <- DESeq(dds, test="LRT", reduced = ~ 1)
+
+# Get results
+res_LRT <- results(dds_lrt)
+
+sigDEG_ID <- as.data.frame(res_LRT) %>% rownames_to_column("geneID") %>% 
+  filter(padj < 0.05) %>% pull(geneID)
+
+# Subset DESeqDataSet to only include DEGs only
+dds_subset <- dds[rownames(dds) %in% sigDEG_ID, ]
+
+# Apply rlog transformation to the subsetted DESeqDataSet
+rld <- rlog(dds_subset) #, blind = TRUE)
+
+# Extract the rlog values as a matrix
+rlog_values <- assay(rld)
+
+# If you want the rlog values as a data frame, you can do this:
+rlog_df <- as.data.frame(rlog_values)
+
+# Use the `degPatterns` function from the 'DEGreport' package to show gene clusters across sample groups
+cluster_rlog <- rlog_df[sigDEG_ID, ]
+
+design <- as.data.frame(colData(dds))
+
+design$genotype <- factor(design$genotype,levels = c("B73", "B73xb172", "b172"))
+
+clusters <- degPatterns(cluster_rlog, metadata = design, time = "genotype", col=NULL)
+
+
+clusters <- degPatterns(cluster_rlog, metadata = design, consensusCluster=F, time = "genotype", col=NULL)
+
+
+
+
+
+
+
+saveRDS(clusters, "data/rnaseq/clusters_b172_B73_B73xb172.Rds")
+
+clusters <- readRDS("data/rnaseq/clusters_b172_B73_B73xb172.Rds")
+
+cluster_down_het <- clusters$df[clusters$df$cluster==3,]
+
+cluster_up_het <- clusters$df[clusters$df$cluster==4,]
+
+p <- clusters$plot
+p$layers$geom_point$aes_params$alpha <- 0.05
+p$layers$geom_line$aes_params$alpha <- 0.05
+p1 <- p + scale_color_manual(values = "black") + theme(legend.position = "none")
+
+ggsave("images/clusters_b172_B73_B73xb172.png", p1, width = 8, height = 6)
+
+```
+
+![](images/clusters_b172_B73_B73xb172.png)
+
+
+## b172, B73, b172xB73
+
+```{r}
+require(DEGreport)
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ genotype)
+
+selection <- coldata %>% filter(genotype %in% c("b172","B73","b172xB73")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+# Get rid of unused genotypes
+colData(dds)$genotype <- droplevels(colData(dds)$genotype)
+
+# Likelihood ratio test
+dds_lrt <- DESeq(dds, test="LRT", reduced = ~ 1)
+
+# Get results
+res_LRT <- results(dds_lrt)
+
+sigDEG_ID <- as.data.frame(res_LRT) %>% rownames_to_column("geneID") %>% 
+  filter(padj < 0.05) %>% pull(geneID)
+
+# Subset DESeqDataSet to only include DEGs only
+dds_subset <- dds[rownames(dds) %in% sigDEG_ID, ]
+
+# Apply rlog transformation to the subsetted DESeqDataSet
+rld <- rlog(dds_subset) #, blind = TRUE)
+
+# Extract the rlog values as a matrix
+rlog_values <- assay(rld)
+
+# If you want the rlog values as a data frame, you can do this:
+rlog_df <- as.data.frame(rlog_values)
+
+# Use the `degPatterns` function from the 'DEGreport' package to show gene clusters across sample groups
+cluster_rlog <- rlog_df[sigDEG_ID, ]
+
+design <- as.data.frame(colData(dds))
+
+design$genotype <- factor(design$genotype,levels = c("b172", "b172xB73", "B73"))
+
+clusters <- degPatterns(cluster_rlog, metadata = design, time = "genotype", col=NULL)
+
+saveRDS(clusters, "data/rnaseq/clusters_b172_B73_b172xB73.Rds")
+
+clusters <- readRDS("data/rnaseq/clusters_b172_B73_b172xB73.Rds")
+
+cluster_down_het <- clusters$df[clusters$df$cluster==3,]
+
+cluster_up_het <- clusters$df[clusters$df$cluster==4,]
+
+p <- clusters$plot
+p$layers$geom_point$aes_params$alpha <- 0.05
+p$layers$geom_line$aes_params$alpha <- 0.05
+p1 <- p + scale_color_manual(values = "black") + theme(legend.position = "none")
+
+ggsave("images/clusters_b172_B73_b172xB73.png", p1, width = 8, height = 6)
+
+```
+
+![](images/clusters_b172_B73_b172xB73.png)
+
+
+## b172, B73, B73xb172, b172xB73
+
+```{r}
+require(DEGreport)
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ genotype)
+
+selection <- coldata %>% filter(genotype %in% c("b172","B73","B73xb172","b172xB73")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+# Get rid of unused genotypes
+colData(dds)$genotype <- droplevels(colData(dds)$genotype)
+
+# Likelihood ratio test
+dds_lrt <- DESeq(dds, test="LRT", reduced = ~ 1)
+
+# Get results
+res_LRT <- results(dds_lrt)
+
+sigDEG_ID <- as.data.frame(res_LRT) %>% rownames_to_column("geneID") %>% 
+  filter(padj < 0.05) %>% pull(geneID)
+
+# Subset DESeqDataSet to only include DEGs only
+dds_subset <- dds[rownames(dds) %in% sigDEG_ID, ]
+
+# Apply rlog transformation to the subsetted DESeqDataSet
+rld <- rlog(dds_subset) #, blind = TRUE)
+
+# Extract the rlog values as a matrix
+rlog_values <- assay(rld)
+
+# If you want the rlog values as a data frame, you can do this:
+rlog_df <- as.data.frame(rlog_values)
+
+# Use the `degPatterns` function from the 'DEGreport' package to show gene clusters across sample groups
+cluster_rlog <- rlog_df[sigDEG_ID, ]
+
+design <- as.data.frame(colData(dds))
+
+design$genotype <- factor(design$genotype,levels = c("B73", "B73xb172", "b172xB73", "b172"))
+
+clusters <- degPatterns(cluster_rlog, metadata = design, time = "genotype", col=NULL)
+
+saveRDS(clusters, "data/rnaseq/clusters_b172_B73_B73xb172_b172xB73.Rds")
+
+clusters <- readRDS("data/rnaseq/clusters_b172_B73_B73xb172_b172xB73.Rds")
+
+cluster_down_het <- clusters$df[clusters$df$cluster==7,]
+
+cluster_up_het <- clusters$df[clusters$df$cluster==8,]
+
+p <- clusters$plot
+p$layers$geom_point$aes_params$alpha <- 0.05
+p$layers$geom_line$aes_params$alpha <- 0.05
+p1 <- p + scale_color_manual(values = "black") + theme(legend.position = "none")
+
+ggsave("images/clusters_b172_B73_B73xb172_b172xB73.png", p1, width = 8, height = 6)
+
+```
+
+![](images/clusters_b172_B73_B73xb172_b172xB73.png)
+
+## Mo17, m047, m047xMo17
+
+```{r}
+require(DEGreport)
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ genotype)
+
+
+selection <- coldata %>% filter(genotype %in% c("m047","Mo17","m047xMo17")) %>% pull(sample)
+
+dds <- dds[, colnames(dds) %in% selection]
+
+# Get rid of unused genotypes
+colData(dds)$genotype <- droplevels(colData(dds)$genotype)
+
+# Likelihood ratio test
+dds_lrt <- DESeq(dds, test="LRT", reduced = ~ 1)
+
+# Get results
+res_LRT <- results(dds_lrt)
+
+sigDEG_ID <- as.data.frame(res_LRT) %>% rownames_to_column("geneID") %>% 
+  filter(padj < 0.05) %>% pull(geneID)
+
+# Subset DESeqDataSet to only include DEGs only
+dds_subset <- dds[rownames(dds) %in% sigDEG_ID, ]
+
+# Apply rlog transformation to the subsetted DESeqDataSet
+rld <- rlog(dds_subset) #, blind = TRUE)
+
+# Extract the rlog values as a matrix
+rlog_values <- assay(rld)
+
+# If you want the rlog values as a data frame, you can do this:
+rlog_df <- as.data.frame(rlog_values)
+
+# Use the `degPatterns` function from the 'DEGreport' package to show gene clusters across sample groups
+cluster_rlog <- rlog_df[sigDEG_ID, ]
+
+design <- as.data.frame(colData(dds))
+
+design$genotype <- factor(design$genotype,levels = c("m047", "m047xMo17", "Mo17"))
+
+clusters <- degPatterns(cluster_rlog, metadata = design, time = "genotype",  nClusters=9)
+
+
+
+
+clusters <- degPatterns(cluster_rlog, metadata = design, time = "genotype", col=NULL)
+
+clusters <- degPatterns(cluster_rlog, metadata = design, time = "genotype", col=NULL)
+
+saveRDS(clusters, "data/rnaseq/clusters_Mo17_m047_m047xMo17.Rds")
+
+clusters <- readRDS("data/rnaseq/clusters_Mo17_m047_m047xMo17.Rds")
+
+p <- clusters$plot
+p$layers$geom_point$aes_params$alpha <- 0.05
+p$layers$geom_line$aes_params$alpha <- 0.05
+p1 <- p + scale_color_manual(values = "black") + theme(legend.position = "none")
+
+ggsave("images/clusters_Mo17_m047_m047xMo17.png", p1, width = 8, height = 6)
+
+
+
+```
+
+![](images/clusters_Mo17_m047_m047xMo17.png)
+
+
+## Overlap DEGs
+
+```{r}
+
+# Create a dataframe with all DEGs
+
+clusters <- readRDS("data/rnaseq/clusters_B73_Mo17_B73xMo17.Rds")
+
+cluster_up_het <- clusters$df[clusters$df$cluster==3,]
+
+cluster_down_het <- clusters$df[clusters$df$cluster==4,]
+
+df_1 <- data.frame(analysis=rep("B73xMo17", length(cluster_up_het$genes)+length(cluster_down_het$genes)), geneID=c(cluster_up_het$genes, cluster_down_het$genes), het_vs_hom = c(rep("up", length(cluster_up_het$genes)), rep("down",length(cluster_down_het$genes))))
+
+
+clusters <- readRDS("data/rnaseq/clusters_B73_b015_B73xb015.Rds")
+
+cluster_up_het <- clusters$df[clusters$df$cluster==3,]
+
+cluster_down_het <- clusters$df[clusters$df$cluster==4,]
+
+df_2 <- data.frame(analysis=rep("B73xb015", length(cluster_up_het$genes)+length(cluster_down_het$genes)), geneID=c(cluster_up_het$genes, cluster_down_het$genes), het_vs_hom = c(rep("up", length(cluster_up_het$genes)), rep("down",length(cluster_down_het$genes))))
+
+
+clusters <- readRDS("data/rnaseq/clusters_B73_b131_b131xB73.Rds")
+
+cluster_down_het <- clusters$df[clusters$df$cluster==3,]
+
+cluster_up_het <- clusters$df[clusters$df$cluster==4,]
+
+df_3 <- data.frame(analysis=rep("b131xB73", length(cluster_up_het$genes)+length(cluster_down_het$genes)), geneID=c(cluster_up_het$genes, cluster_down_het$genes), het_vs_hom = c(rep("up", length(cluster_up_het$genes)), rep("down",length(cluster_down_het$genes))))
+
+
+clusters <- readRDS("data/rnaseq/clusters_b172_B73_B73xb172.Rds")
+
+cluster_down_het <- clusters$df[clusters$df$cluster==3,]
+
+cluster_up_het <- clusters$df[clusters$df$cluster==4,]
+
+df_4 <- data.frame(analysis=rep("B73xb172", length(cluster_up_het$genes)+length(cluster_down_het$genes)), geneID=c(cluster_up_het$genes, cluster_down_het$genes), het_vs_hom = c(rep("up", length(cluster_up_het$genes)), rep("down",length(cluster_down_het$genes))))
+
+
+clusters <- readRDS("data/rnaseq/clusters_b172_B73_b172xB73.Rds")
+
+cluster_down_het <- clusters$df[clusters$df$cluster==3,]
+
+cluster_up_het <- clusters$df[clusters$df$cluster==4,]
+
+df_5 <- data.frame(analysis=rep("b172xB73", length(cluster_up_het$genes)+length(cluster_down_het$genes)), geneID=c(cluster_up_het$genes, cluster_down_het$genes), het_vs_hom = c(rep("up", length(cluster_up_het$genes)), rep("down",length(cluster_down_het$genes))))
+
+
+clusters <- readRDS("data/rnaseq/clusters_b172_B73_B73xb172_b172xB73.Rds")
+
+cluster_down_het <- clusters$df[clusters$df$cluster==7,]
+
+cluster_up_het <- clusters$df[clusters$df$cluster==8,]
+
+df_6 <- data.frame(analysis=rep("B73xb172_b172xB73", length(cluster_up_het$genes)+length(cluster_down_het$genes)), geneID=c(cluster_up_het$genes, cluster_down_het$genes), het_vs_hom = c(rep("up", length(cluster_up_het$genes)), rep("down",length(cluster_down_het$genes))))
+
+df_analysis <- rbind(df_1, df_2, df_3, df_4, df_5, df_6)
+
+saveRDS(df_analysis, "data/rnaseq/summary_LRT_analysis.Rds")
+
+```
+
+## Intersect
+
+```{r}
+library(ComplexUpset)
+library(tibble)
+library(dplyr)
+
+# Convert long to large
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+#df_analysis_large <- reshape(data=df_analysis, idvar="geneID", v.names=c("geneID"), timevar="analysis", direction="wide")
+
+genes <- list(B73xMo17=df_analysis[df_analysis$analysis=="B73xMo17", "geneID"],
+              B73xb015=df_analysis[df_analysis$analysis=="B73xb015", "geneID"],
+              b131xB73=df_analysis[df_analysis$analysis=="b131xB73", "geneID"],
+              B73xb172=df_analysis[df_analysis$analysis=="B73xb172", "geneID"],
+              b172xB73=df_analysis[df_analysis$analysis=="b172xB73", "geneID"],
+              B73xb172_b172xB73=df_analysis[df_analysis$analysis=="B73xb172_b172xB73", "geneID"])
+              
+
+# convert to data frame of membership (one row per gene)
+all_genes <- unique(unlist(genes))
+df <- tibble(gene = all_genes)
+for(nm in names(genes)){
+df[[nm]] <- df$gene %in% genes[[nm]]
+}
+
+ComplexUpset::upset(df, names(genes), min_size = 10)
+```
+
+
+```{r}
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+genes <- list(B73xMo17=df_analysis[df_analysis$analysis=="B73xMo17", "geneID"],
+              B73xb015=df_analysis[df_analysis$analysis=="B73xb015", "geneID"],
+              b131xB73=df_analysis[df_analysis$analysis=="b131xB73", "geneID"],
+              B73xb172=df_analysis[df_analysis$analysis=="B73xb172", "geneID"],
+              b172xB73=df_analysis[df_analysis$analysis=="b172xB73", "geneID"],
+              B73xb172_b172xB73=df_analysis[df_analysis$analysis=="B73xb172_b172xB73", "geneID"])
+             
+
+ck <- compareCluster(geneCluster = genes)
+```
+
+
+
+## GO analysis
+
+### Function
+
+```{r}
+
+perform_GO <- function(list_genes){
+
+  list_ego_results <- ego_analysis(list_genes)
+  
+  lapply(list_ego_results, function(x) sum(x@result$p.adjust < 0.05))
+  
+  df_ego_analysis <- enrichResult2dataframe(list_ego_results)
+  
+  df_ego_analysis_significant <- df_ego_analysis %>% dplyr::filter(p.adjust < 0.05)
+  
+  p1 <- df_ego_analysis_significant %>% filter(ontology=="BP") %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("BP GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+  
+  p2 <- df_ego_analysis_significant %>% filter(ontology=="MF") %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("MF GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+  
+  p3 <- df_ego_analysis_significant %>% filter(ontology=="CC") %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("CC GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+
+    p4 <- df_ego_analysis_significant %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+  
+  return(list(p1,p2,p3,p4))
+  
+}
+
+```
+
+### B73xMo17
+
+#### All
+
+
+```{r}
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="B73xMo17") %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+(lp[[1]] | lp[[2]] | lp[[3]])
+
+```
+
+#### Up
+
+```{r}
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="B73xMo17" & het_vs_hom=="up")  %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+(lp[[1]] | lp[[2]] | lp[[3]])
+
+```
+
+#### Down
+
+```{r}
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="B73xMo17" & het_vs_hom=="down")  %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+(lp[[1]] | lp[[2]] | lp[[3]])
+
+```
+
+### B73xb015
+
+```{r}
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="B73xb015") %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+(lp[[1]] | lp[[2]] | lp[[3]])
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="B73xb015" & het_vs_hom=="up")  %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+(lp[[1]] | lp[[2]] | lp[[3]])
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="B73xb015" & het_vs_hom=="down")  %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+(lp[[1]] | lp[[2]] | lp[[3]])
+
+
+```
+
+
+
+### b131xB73
+
+```{r}
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="b131xB73") %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+lp[[4]]
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="b131xB73" & het_vs_hom=="up")  %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+lp[[4]]
+
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="b131xB73" & het_vs_hom=="down")  %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+lp[[4]]
+
+
+```
+
+### b172xB73
+
+```{r}
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="b172xB73") %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+lp[[4]]
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="b172xB73" & het_vs_hom=="up")  %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+lp[[4]]
+
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="b172xB73" & het_vs_hom=="down")  %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+lp[[4]]
+
+```
+
+### B73xb172
+
+```{r}
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="B73xb172") %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+lp[[4]]
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="B73xb172" & het_vs_hom=="up")  %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+lp[[4]]
+
+
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+list_genes <- df_analysis %>% filter(analysis=="B73xb172" & het_vs_hom=="down")  %>% pull(geneID)
+
+lp <- perform_GO(list_genes)
+
+lp[[4]]
+
+```
+
+
+
+#.
+# #######################################
+# TraPR
+# #######################################
+
+
+# Data
+
+In `/mnt/ceph-hdd/projects/scc_uanp_scholten/data/ngs_data/BGI_data/F24A910000280_LIBdyjmR_sRNA_maize`
+
+
+```{bash, eval=FALSE}
+
+# Copy fastq files
+/mnt/ceph-hdd/projects/scc_uanp_scholten/data/ngs_data/BGI_data/F24A910000280_LIBdyjmR_sRNA_maize
+
+cat list_samples.txt
+B73_TraPR
+B73xMo17_TraPR
+B73xb015_TraPR
+B73xb172_TraPR
+Mo17_TraPR
+b015_TraPR
+b131_TraPR
+b131xB73_TraPR
+b172_TraPR
+b172xB73_TraPR
+m047_TraPR
+m047xMo17_TraPR
+
+while read i; do
+cp /mnt/ceph-hdd/projects/scc_uanp_scholten/data/ngs_data/BGI_data/F24A910000280_LIBdyjmR_sRNA_maize/${i}/${i}_L1_1.fq.gz raw_fastq
+done < list_samples.txt
+
+# Rename to remove useless suffix
+cd raw_fastq
+rename "_TraPR_L1_1" "" *gz
+
+```
+
+# Trimming
+
+```{bash, eval=FALSE}
+
+# List raw fastq locations
+find raw_fastq -name "*gz" > list_fastq.txt
+
+
+#!/bin/bash
+#
+#SBATCH --job-name=trimming_cutadapt
+#SBATCH --nodes=1
+#SBATCH --ntasks=6
+#SBATCH --mem=16000
+#SBATCH --output=slurm/trimming.%A.%a.out
+#SBATCH --error=slurm/trimming.%A.%a.err
+#SBATCH --partition=medium
+#SBATCH --time=01:00:00
+#SBATCH --array=1-12
+
+module load apptainer/1.3.4
+
+app_shortcut="apptainer run --bind /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/trapr_data /sw/container/bioinformatics/cutadapt-5.0.sif"
+
+input_file=$(sed -n ${SLURM_ARRAY_TASK_ID}p list_fastq.txt)
+name_fastq=$(basename "$input_file" | cut -d. -f1)
+
+$app_shortcut cutadapt -j 0 -a agatcggaagagcacacgtct --discard-untrimmed $input_file | $app_shortcut cutadapt -j 0 -m 18 -o trimmed_fastq/${name_fastq}.trimmed.fq.gz -
+
+```
+
+
+# Mapping
+
+
+```{bash, eval=FALSE}
+
+#!/bin/bash
+#SBATCH --job-name=bowtie2
+#SBATCH --output=slurm/job-%x-%j.out
+#SBATCH --error=slurm/job-%x-%j.err
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=12G
+#SBATCH --time=00:40:00
+#SBATCH --partition=medium
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-12
+
+module load gcc/14.2.0 samtools/1.21 bowtie/1.3.1
+
+\ls -1 *gz > list_files.txt
+
+mkdir -p mapped/fasta/collapsed/formated
+
+index="/mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/B73_NAM5/bowtie_index/index_Zm_B73_NAM5"
+
+fastq_file=$(sed -n ${SLURM_ARRAY_TASK_ID}p list_files.txt)
+
+if [ ! -e "mapped/${fastq_file%%.*}.bam" ]; then
+  bowtie -S -l 37 -n 1 -x $index --threads 8 -q $fastq_file | \
+    samtools sort | samtools view -F 4 -b -o mapped/${fastq_file%%.*}.bam -
+    
+  # Convert to fasta
+  samtools fasta -F 4 mapped/${fastq_file%%.*}.bam > mapped/fasta/${fastq_file%%.*}.fa
+else
+  echo "mapped/${fastq_file%%.*}.bam already exists"
+fi
+
+
+```
+
+
+
+# Format data
+
+```{bash, eval=FALSE}
+
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/trapr_data/trimmed_fastq/mapped/fasta
+
+# Collapse fasta files
+for i in *fa; do
+  srun -p medium --time=00:20:00 ~/bin/fastx_toolkit/fastx_collapser -i $i -o collapsed/${i%%.*}.fa &
+done
+
+cd collapsed
+
+seqkit stats *fa
+
+file          format  type   num_seqs     sum_len  min_len  avg_len  max_len
+B73.fa        FASTA   DNA      28,301     657,111       18     23.2       47
+B73xMo17.fa   FASTA   DNA      22,162     509,254       18       23       47
+B73xb015.fa   FASTA   DNA   1,493,290  33,544,543       18     22.5       47
+B73xb172.fa   FASTA   DNA   1,208,419  27,363,978       18     22.6       47
+Mo17.fa       FASTA   DNA   1,631,880  37,122,865       18     22.7       47
+b015.fa       FASTA   DNA   1,381,893  31,097,480       18     22.5       47
+b131.fa       FASTA   DNA   1,654,529  37,915,325       18     22.9       47
+b131xB73.fa   FASTA   DNA   1,257,683  28,706,526       18     22.8       47
+b172.fa       FASTA   DNA   1,948,001  44,395,291       18     22.8       47
+b172xB73.fa   FASTA   DNA   1,127,045  25,556,880       18     22.7       47
+m047.fa       FASTA   DNA   1,384,406  31,220,097       18     22.6       47
+m047xMo17.fa  FASTA   DNA   1,610,528  36,199,676       18     22.5       47
+
+
+
+# Format and sort data by sequence name
+for i in *.fa; do
+  prefix=$(basename ${i%%.*})
+  awk -v RS='\n>' -v ORS='\n>' -v OFS='' -F'\n' '{$1=$1 "\t"}1' $i | \
+          awk 'BEGIN {FS = "-"}{print $2}' | awk '{print $2"\t"$1}' | \
+          sed '$ d' | sort -k1,1  > formated/${prefix}.txt
+done
+
+```
+
+# Merge data
+
+
+```{bash, eval=FALSE}
+# Convert underscore in hyphens so the suffix stay in the header
+rename "_" "-" *txt
+
+# specific the absolute path (. for current directory creates a bug). 
+# Don't forget the final slash
+
+# Load java
+module load openjdk/17.0.11_9
+
+directory="/mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/trapr_data/trimmed_fastq/mapped/fasta/collapsed/formated/"
+
+java -jar /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/sRNA_data/scripts/GenerateDatasetJoinShellScript/dist/GenerateDatasetJoinShellScript.jar \
+    -fileEnding txt -directory $directory
+
+# Remove txt suffix that are added in header of the file
+sed -i 's/\.txt//g' header.csv
+
+srun -p medium --time=01:00:00 bash merge_datasets.sh &
+
+# I need to remove the name of the first column (sequence)
+sed -i 's/sequence//' header.csv
+
+
+wc -l merged_dataset.csv
+9926211 merged_dataset.csv
+# 10M sequences
+
+# Add header
+cat header.csv merged_dataset.csv > cts_with_header.txt
+
+unix2dos cts_with_header.txt
+
+cut -d' ' -f1 merged_dataset.csv > sequences_trapr.txt
+
+
+```
+
+
+# PCA expression
+
+```{r}
+# Import the cts matrix (not gene name is now the row name => required)
+cts <- read.table("data/trapr/cts_with_header.txt", header=TRUE, row.names=1, check.names = FALSE)
+
+# Create a more compact R object
+saveRDS(cts,"data/trapr/cts.Rds")
+
+cts <- readRDS("data/trapr/cts.Rds")
+
+# Upload the coldata file
+coldata <- data.frame(
+  sample = c("B73", "B73xMo17", "B73xb015", "B73xb172", "Mo17", "b015", "b131", "b131xB73", "b172", "b172xB73", "m047", "m047xMo17"),
+  NOR = c("homozygous", "heterozygous", "heterozygous", "heterozygous", "homozygous", "homozygous", "homozygous", "heterozygous", "homozygous", "heterozygous", "homozygous", "heterozygous")
+, stringsAsFactors = FALSE)
+
+
+# Convert the variables into factors
+coldata[,names(coldata)] <- lapply(coldata[,names(coldata)] , factor)
+
+saveRDS(coldata,"data/trapr/coldata.Rds")
+
+
+
+### Check that sample names match in both files
+all(colnames(cts) == coldata$sample)
+
+```
+
+
+```{r}
+# Create a DESeqDataSet object
+dds <- DESeqDataSetFromMatrix(countData = cts,
+                              colData = coldata,
+                              design= ~sample)
+
+# Variance stabilizing transformation
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "NOR"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+
+p <- ggplot(pcaData, aes(PC1, PC2, color=NOR, label=sample)) +  
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) + 
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +  
+  theme_bw() +  
+  ggtitle("PCA sRNA expression") + 
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+p + geom_text(size = 3)
+
+```
+
+![](images/PCA_traPR.png)
+
+
+
+# Reads per million analysis
+
+Normalize raw read count into reads per million to compare samples with each other.
+
+```{r}
+# Import the cts matrix (not gene name is now the row name => required)
+cts <- readRDS("data/trapr/cts.Rds")
+
+# Upload the coldata file
+coldata <- readRDS("data/trapr/coldata.Rds")
+
+# Convert the variables into factors
+col_names <- names(coldata)
+coldata[,col_names] <- lapply(coldata[,col_names] , factor)
+
+### Check that sample names match in both files
+all(colnames(cts) == coldata$sample)
+
+```
+
+
+```{r}
+
+m_cts <- as.matrix(cts)
+
+# RPM normalize by dividing each value by the sum of the column and multiply by 1e6
+rpm <- sweep(m_cts, 2, colSums(m_cts),`/`)
+rpm <- rpm * 1e6
+
+# Check, every column should sum to 1e6
+colSums(rpm)
+# 1e6
+
+# Turn into dataframe
+df_RPM <- as.data.frame(rpm)
+
+# Put seq as variable and add size variable
+df_RPM <- df_RPM %>% rownames_to_column(var="sequence")
+df_RPM$size <- nchar(df_RPM$sequence)
+
+# Set size and sequence as factor
+df_RPM$size <- as.factor(df_RPM$size)
+df_RPM$sequence <- as.factor(df_RPM$sequence)
+
+df_RPM <- df_RPM %>% relocate(size, .after=sequence)
+
+saveRDS(df_RPM, "data/trapr/df_RPM.Rds")
+
+# Turn into a long list
+
+df_RPM <- readRDS("data/trapr/df_RPM.Rds")
+
+# Move to long list
+df_RPM_long <- df_RPM %>% gather(sample, RPM, B73:m047xMo17)
+
+# sample as factor
+df_RPM_long$sample <- as.factor(df_RPM_long$sample)
+
+# Save object
+saveRDS(df_RPM_long, "data/trapr/df_RPM_long.Rds")
+
+```
+
+
+### sRNA expression overview
+
+```{r}
+
+df_RPM_long <- readRDS("data/srnaseq/df_RPM_long.Rds")
+
+long_df_rpm_size <- df_RPM_long %>% group_by(size, sample) %>% 
+  summarize(RPM=sum(RPM), nb_sequence=n(), .groups='drop') %>% 
+  arrange(RPM)
+
+long_df_rpm_size_mean <- long_df_rpm_size %>% group_by(size, sample) %>% 
+  summarize(RPM_mean=sum(RPM)/n(), ngroup=n(), sd=sd(RPM), .groups='drop')
+
+
+long_df_rpm_size_mean$sample <- factor(long_df_rpm_size_mean$sample, levels = c("B73", "Mo17", "B73xMo17", "b015", "B73xb015", "b131", "b131xB73", "b172", "b172xB73", "B73xb172", "m047", "m047xMo17"), ordered = T)
+
+ggplot(long_df_rpm_size_mean, aes(x = size, y = RPM_mean, fill = sample)) +
+  geom_bar(stat = "identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin = RPM_mean - sd, ymax = RPM_mean + sd),
+    width = .5,
+    position = position_dodge(.9)
+  ) +
+  theme_bw() +
+  ylab("RPM") +
+  xlab("Size in nt") +
+  ggtitle("sRNA expression profile") +
+  theme(axis.text.x = element_text(color = "black"), 
+        axis.text.y = element_text(color = "black"), 
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_y_continuous(labels = scales::comma_format())
+
+```
+
+
+Show only B73, Mo17, and F1:
+
+```{r}
+
+
+long_df_rpm_size_mean %>% filter(sample %in% c("B73","Mo17","B73xMo17")) %>%
+ggplot(aes(x = size, y = RPM_mean, fill = sample)) +
+  geom_bar(stat = "identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin = RPM_mean - sd, ymax = RPM_mean + sd),
+    width = .5,
+    position = position_dodge(.9)
+  ) +
+  theme_bw() +
+  ylab("RPM") +
+  xlab("Size in nt") +
+  ggtitle("sRNA expression profile") +
+  theme(axis.text.x = element_text(color = "black"), 
+        axis.text.y = element_text(color = "black"), 
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_y_continuous(labels = scales::comma_format())
+
+```
+
+
+
+### Sequence diversity
+
+```{r}
+
+df_RPM_long <- readRDS("data/srnaseq/df_RPM_long.Rds")
+
+df_RPM_long_sum <- df_RPM_long %>% filter(RPM>0) %>% group_by(size, sample) %>% 
+  summarize(n_sum=n_distinct(sequence), .groups='drop')
+
+
+df_RPM_long_sum$sample <- factor(df_RPM_long_sum$sample, levels = c("B73", "Mo17", "B73xMo17", "b015", "B73xb015", "b131", "b131xB73", "b172", "b172xB73", "B73xb172", "m047", "m047xMo17"), ordered = T)
+
+df_RPM_long_sum %>% 
+  ggplot(aes(x = size, y = n_sum, fill = sample)) +
+  geom_bar(stat = "identity", position=position_dodge()) +
+  theme_bw() +
+  ggtitle("sRNA sequence diversity") +
+  ylab("Number of sRNAs") +
+  xlab("Size in nt") +
+  theme(axis.text.x = element_text(color = "black"), 
+        axis.text.y = element_text(color = "black"), 
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_y_continuous(labels = scales::comma_format())
+
+```
+
+
+## UNITAS analysis all sRNAs
+
+Run UNITAS on all 4M sRNAs found across libraries
+
+
+### Install software
+
+Install UNITAS v1.9.1 from GitHub (https://github.com/d-gebert/unitas)
+
+```{bash, eval=FALSE}
+chmod +x unitas_1.9.1.pl
+
+cpan install Archive::Extract Getopt::Long File::Path LWP::Simple
+
+# LWP::Protocol::https already installed 
+perldoc -l LWP::Protocol::https
+
+# Get maize database
+perl unitas_1.9.1.pl -refdump -species Zea_mays
+
+```
+
+### Get TE annotation
+
+Get the TE annotation from B73 NAM5:
+
+```{bash, eval=FALSE}
+
+# Integrate TE annotation in UNITAS output
+
+# Download B73 NAM5 TE annotation
+wget https://raw.githubusercontent.com/oushujun/MTEC/master/maizeTE02052020
+# Note: This version was now put in the "history" folder. A new version is available (maizeTE04092026)
+# with 40 new TEs annotated
+
+# I just need to add the prefix "TE|" so that Unitas 
+# classifies the mapped sRNAs in the TE category
+seqkit replace -p ^ -r "TE|" maizeTE02052020.fa > maizeTE02052020_renamed.fa
+
+```
+
+### Run Unitas
+
+```{r}
+sequences_trapr <- read.table("data/trapr/sequences_trapr.txt", quote="\"", comment.char="")
+
+make_fasta(sequences_trapr$V1, "data/trapr/sequences_trapr.fa")
+```
+
+
+```{bash, eval=FALSE}
+# Rename headers of input fasta file with a running number to avoid issue with UNITAS
+# seqkit replace -p .+ -r "seq_{nr}" all_sRNAs_18_40nt.fa > all_sRNAs_18_40nt.renamed.fa
+
+# Run Unitas
+perl unitas_1.9.1.pl -input sequences_trapr.fa \
+    -refseq maizeTE02052020_renamed.fa -species Zea_mays
+    
+```
+
+
+### R plotting
+
+#### Integrate output UNITAS into a R dataframe
+
+```{r}
+
+df_RPM_long <- readRDS("data/trapr/df_RPM_long.Rds")
+
+# Fasta output of UNITAS
+df_rRFs <- fasta_to_df("data/trapr/unitas/fasta/unitas.rRNA.fas")
+df_PC_genes <- fasta_to_df("data/trapr/unitas/fasta/unitas.protein_coding.fas")
+df_TEs_unitas <- fasta_to_df("data/trapr/unitas/fasta/unitas.TE.fas")
+df_tRFs_unitas <- fasta_to_df("data/trapr/unitas/fasta/unitas.tRNA.fas")
+
+df_RPM_long_unitas <- df_RPM_long %>%
+  mutate(category = ifelse((sequence %in% df_tRFs_unitas$sequence),
+    "tRNA", ifelse((sequence %in% df_rRFs$sequence), "rRNA",
+      ifelse((sequence %in% df_PC_genes$sequence), "PC_genes",
+        ifelse((sequence %in% df_TEs_unitas$sequence), "TEs", "others")
+      )
+    )
+  ))
+
+df_RPM_long_unitas$category <- as.factor(df_RPM_long_unitas$category)
+
+saveRDS(df_RPM_long_unitas, "data/trapr/df_RPM_long_unitas.Rds")
+
+```
+
+#### Sequence diversity per category
+
+```{r}
+
+df_RPM_long_unitas <- readRDS("data/trapr/df_RPM_long_unitas.Rds")
+
+df_RPM_long_unitas_sum <- df_RPM_long_unitas %>% filter(RPM>0) %>% group_by(category, sample) %>% summarize(n_sum=n_distinct(sequence), .groups='drop')
+
+col <-c("#7b3294","#c2a5cf","#a6dba0","#008837","gray")
+
+# Order categories
+df_RPM_long_unitas_sum$category <- 
+  factor(df_RPM_long_unitas_sum$category, levels = c("rRNA", "tRNA", "PC_genes", "TEs", "others"))
+
+df_RPM_long_unitas_sum$sample <- factor(df_RPM_long_unitas_sum$sample, levels = c("B73", "Mo17", "B73xMo17", "b015", "B73xb015", "b131", "b131xB73", "b172", "b172xB73", "B73xb172", "m047", "m047xMo17"), ordered = T)
+
+
+ggplot(df_RPM_long_unitas_sum, 
+             aes(x=sample, y=n_sum, fill=category)) + 
+  geom_bar(stat="identity", position="dodge") + 
+  theme_bw() + 
+  scale_fill_manual(values=col) +
+  ylab("Number of sRNAs") + 
+  xlab("") + 
+  ggtitle("sRNA sequence diversity") + 
+  theme(plot.title = element_text(hjust = 0.5))  + 
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) + 
+  scale_y_continuous(labels = scales::comma_format())
+
+```
+
+![](images/sRNA_sequence_diversity.png)
+
+
+```{r}
+col <-c("#7b3294","#c2a5cf","#a6dba0","#008837","gray")
+
+ggplot(df_RPM_long_unitas_sum, aes(x = sample, y=n_sum, fill=category)) + 
+  geom_bar(stat = "identity") +
+  theme_bw() + 
+  scale_fill_manual(values=col) +
+  ylab("Number of sRNAs") + 
+  xlab("") + 
+  ggtitle("sRNA sequence diversity") + 
+  theme(plot.title = element_text(hjust = 0.5))  + 
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) + 
+  scale_y_continuous(labels = scales::comma_format()) 
+```
+![](images/sRNA_sequence_diversity_stack.png)
+
+#### Expression per category
+
+```{r}
+
+df_RPM_long_unitas_sum <- df_RPM_long_unitas %>% group_by(category, sample) %>% summarize(RPM_sum=sum(RPM), .groups='drop')
+
+df_RPM_long_unitas_mean  <- df_RPM_long_unitas_sum %>% group_by(category, sample) %>% 
+  summarize(RPM_mean=sum(RPM_sum)/n(), nb_sequence=n(), sd=sd(RPM_sum), .groups='drop')
+
+# Order categories
+
+col <-c("#7b3294","#c2a5cf","#a6dba0","#008837","gray")
+
+# Order categories
+df_RPM_long_unitas_mean$category <- 
+  factor(df_RPM_long_unitas_mean$category, levels = c("rRNA", "tRNA", "PC_genes", "TEs", "others"))
+
+df_RPM_long_unitas_mean$sample <- factor(df_RPM_long_unitas_mean$sample, levels = c("B73", "Mo17", "B73xMo17", "b015", "B73xb015", "b131", "b131xB73", "b172", "b172xB73", "B73xb172", "m047", "m047xMo17"), ordered = T)
+
+
+
+ggplot(df_RPM_long_unitas_mean, aes(x = sample, y = RPM_mean, fill = category)) +
+  geom_bar(stat = "identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin = RPM_mean - sd, ymax = RPM_mean + sd),
+    width = .5,
+    position = position_dodge(.9)
+  ) +
+  theme_bw() +
+  scale_fill_manual(values=col) +
+  ylab("RPM") +
+  xlab("") +
+  ggtitle("sRNA abundance per category") + 
+   theme(axis.text.x = element_text(color = "black"), 
+        axis.text.y = element_text(color = "black"), 
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_y_continuous(labels = scales::comma_format())
+
+```
+
+#.
+# ###################################
+
+# sRNA-seq analysis
+
+# ###################################
+
+Samples were sequenced in three lanes, first replicate in one lane, and second and third in two other lanes.
+
+```{bash, eval=FALSE}
+
+# First lane (rep 2) SE50 BGISEQ-500
+/mnt/ceph-hdd/projects/scc_uanp_scholten/data/ngs_data/BGI_data/F22FTSEUHT1495_LIBfbksR_mRNA_sRNA_degradome_johan_doga/F22FTSEUHT1495_LIBfbksR_SE50_3lane/data_sRNA_NOR_NILs/raw_fastq/
+
+# Second lane (rep 1 and 3) PE50 DNBSEQ-G400
+/mnt/ceph-hdd/projects/scc_uanp_scholten/data/ngs_data/BGI_data/F24A910000280_LIBzmbnR_sRNA_maize_arabidopsis/raw_reads
+
+# third lane (rep 1 and 3) - SE50 DNBSEQ-G400
+/mnt/ceph-hdd/projects/scc_uanp_scholten/data/ngs_data/BGI_data/F24A910000280_LIBdyjmR_sRNA_maize/
+
+```
+
+Gather all fastq file in one place
+
+
+```{bash, eval=FALSE}
+
+# Create a workspace to store data
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/sRNA_data
+
+while read i; do 
+find /mnt/ceph-hdd/projects/scc_uanp_scholten/data/ngs_data/BGI_data/ -type f -name $i -exec cp {} . \;
+done < file_to_find
+
+# Rename file for consistent names
+while read i; do
+mv $i
+done < rename.txt
+
+\ls -1 *gz
+B73_rep1.fq.gz
+B73_rep2.fq.gz
+B73_rep3.fq.gz
+B73xMo17_rep1.fq.gz
+B73xMo17_rep2.fq.gz
+B73xMo17_rep3.fq.gz
+B73xb015_rep1.fq.gz
+B73xb015_rep2.fq.gz
+B73xb015_rep3.fq.gz
+B73xb172_rep1.fq.gz
+B73xb172_rep2.fq.gz
+B73xb172_rep3.fq.gz
+Mo17_rep1.fq.gz
+Mo17_rep2.fq.gz
+Mo17_rep3.fq.gz
+b015_rep1.fq.gz
+b015_rep2.fq.gz
+b015_rep3.fq.gz
+b131_rep1.fq.gz
+b131_rep2.fq.gz
+b131_rep3.fq.gz
+b131xB73_rep1.fq.gz
+b131xB73_rep2.fq.gz
+b131xB73_rep3.fq.gz
+b172_rep1.fq.gz
+b172_rep2.fq.gz
+b172_rep3.fq.gz
+b172xB73_rep1.fq.gz
+b172xB73_rep2.fq.gz
+b172xB73_rep3.fq.gz
+m047_rep1.fq.gz
+m047_rep2.fq.gz
+m047_rep3.fq.gz
+m047xMo17_rep1.fq.gz
+m047xMo17_rep2.fq.gz
+m047xMo17_rep3.fq.gz
+
+```
+
+
+
+## Trimming
+
+```{bash, eval=FALSE}
+
+#!/bin/bash
+#
+#SBATCH --job-name=trimming_cutadapt
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=16000
+#SBATCH --output=log/slurm.%j.%A.%a.out
+#SBATCH --error=log/slurm.%j.%A.%a.err
+#SBATCH --partition=scc-cpu
+#SBATCH --time=04:00:00
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-36
+
+module load apptainer/1.3.4
+
+app_shortcut="apptainer run --bind /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/sRNA_data /sw/container/bioinformatics/cutadapt-5.0.sif"
+
+adapter_sequence="AGATCGGAAGAGCACACGTCT"
+
+input_path=$(find raw_fastq -type f -name "*.gz" | sed -n ${SLURM_ARRAY_TASK_ID}p)
+input_file=$(basename $input_path)
+name_fastq=$(echo "$input_file" | cut -d. -f1)
+
+echo "Processing file $input_path"
+
+if [ -e "trimmed_fastq/${name_fastq}.trimmed.fq.gz" ]; then
+  echo "trimmed_fastq/${name_fastq}.trimmed.fq.gz already exists, skip $input_path"
+else
+  $app_shortcut cutadapt --discard-untrimmed --quality-base 33 -a $adapter_sequence -j 8 $input_path | $app_shortcut cutadapt -j 8 --max-n 0 -m 17 - -o trimmed_fastq/${name_fastq}.trimmed.fq.gz
+fi
+
+```
+
+
+Summary trimmed reads
+
+```{bash, eval=FALSE}
+
+for i in log/*out; do
+  fastq=$(grep "Processing" $i | cut -d' ' -f3)
+  total_reads=$(grep "Total reads processed:" $i | cut -d":" -f2)
+  nb_reads_trimmed=$(grep "Reads written (passing filters)" $i | cut -d":" -f2 | cut -d"(" -f1)
+  sample=$(basename $fastq)
+  echo -e "$sample\t$total_reads$t$nb_reads_trimmed"
+done > trimmed_reads/summary_trimming.txt
+
+
+```
+
+
+| sample                    | before_trimming | after_trimming | left(%) |
+|---------------------------|-----------------|----------------|---------|
+| b131_rep_1_L1_1.fq.gz     | 4,776,026       | 3,552,291      | 74%     |
+| b131_rep_3_L1_1.fq.gz     | 11,214,519      | 8,282,635      | 74%     |
+| b131xB73_rep_1_L1_1.fq.gz | 11,108,300      | 8,128,236      | 73%     |
+| b131xB73_rep_3_L1_1.fq.gz | 7,370,063       | 5,387,220      | 73%     |
+| b172_rep_1_L1_1.fq.gz     | 14,129,669      | 9,978,962      | 71%     |
+| b172_rep_3_L1_1.fq.gz     | 13,014,756      | 9,142,622      | 70%     |
+| B73v4_rep_1_L1_1.fq.gz    | 7,494,381       | 5,444,276      | 73%     |
+| B73v4_rep_3_L1_1.fq.gz    | 12,028,361      | 8,540,762      | 71%     |
+| B73xMo17_rep_1_L1_1.fq.gz | 13,206,713      | 8,478,792      | 64%     |
+| B73xMo17_rep_3_L1_1.fq.gz | 6,042,340       | 3,960,407      | 66%     |
+
+
+## Fastqc
+
+```{bash, eval=FALSE}
+
+#!/bin/bash
+#
+#SBATCH --job-name=fastqc
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=10000
+#SBATCH --output=log/fastqc.%A.%a.out
+#SBATCH --error=log/fastqc.%A.%a.err
+#SBATCH --partition=scc-cpu
+#SBATCH --time=04:00:00
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-36
+
+module load miniforge3
+
+source activate bioinfo
+
+input_path=$(find . -type f -name "*.fq.gz" | sed -n ${SLURM_ARRAY_TASK_ID}p)
+
+fastqc $input_path -o fastqc_reports -t 8
+
+```
+
+```{bash, eval=FALSE}
+
+source activate bioinfo
+
+multiqc .
+
+```
+
+
+## Mapping to B73 genome
+
+We mapped sRNAs to B73 NAM5 assembly (chromosomes and scaffolds). Fasta file was obtained on https://download.maizegdb.org/Zm-B73-REFERENCE-NAM-5.0/Zm-B73-REFERENCE-NAM-5.0.fa.gz
+
+```{bash, eval=FALSE}
+
+# Get B73 NAM5 genome (chromosome and contigs)
+wget https://download.maizegdb.org/Zm-B73-REFERENCE-NAM-5.0/Zm-B73-REFERENCE-NAM-5.0.fa.gz
+gunzip Zm-B73-REFERENCE-NAM-5.0.fa.gz
+
+# Index genome
+module load gcc/14.2.0 bowtie/1.3.1 samtools/1.21
+srun -p medium --cpus-per-task=4 --mem=16G --time=02:00:00 bowtie-build \
+  -f Zm-B73-REFERENCE-NAM-5.0.fa bowtie_index/index_Zm_B73_NAM5 
+
+# Map the reads with 1 mismatched allowed (B73-Mo17 polymorphism)
+bowtie -S -l 37 -n 1 -x index_Zm_B73_NAM5 --threads 8 -f <collapsed.fa> | \
+  samtools sort | samtools view -F 4 -b -o <mapped_reads.bam> -
+
+```
+
+
+```{bash, eval=FALSE}
+
+#!/bin/bash
+#SBATCH --job-name=bowtie2
+#SBATCH --output=slurm/job-%x-%j.out
+#SBATCH --error=slurm/job-%x-%j.err
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=12G
+#SBATCH --time=00:40:00
+#SBATCH --partition=medium
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-36
+
+mkdir -p mapped/fasta/collapsed/formated
+
+module load gcc/14.2.0 samtools/1.21 bowtie/1.3.1
+
+index="/mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/B73_NAM5/bowtie_index/index_Zm_B73_NAM5"
+
+fastq_file=$(sed -n ${SLURM_ARRAY_TASK_ID}p list_files.txt)
+
+bowtie -S -l 37 -n 1 -x $index --threads 8 -q $fastq_file | \
+  samtools sort | samtools view -F 4 -b -o mapped/${fastq_file%%.*}.bam -
+
+# Convert to fasta
+samtools fasta -F 4 mapped/${fastq_file%%.*}.bam > mapped/fasta/${fastq_file%%.*}.fa
+
+```
+
+
+## Format data
+
+To perform the PCA of sRNAs expression of the different samples, we considered every sRNA sequence has a gene and looked at the read count across all samples. We gathered these raw read count into a matrix that can then be processed into DESeq2 as a standard gene read count matrix.
+
+Use collapsed reads by `fastx_collapser` which gives the sequence and the number of times it occurs in a given sample with the number of occurrences within the fasta header.
+
+Example:
+
+```
+>1-460089
+TGCAAATCTAACGAAGTGCTCCTGGACG
+>2-206928
+CGTTATTTTACTTATTCCGTGGGTCGGAAGCGGGGCA
+>3-195873
+TTAACACATGCAAATCTAACGAAGTGCTCCTGGACG
+```
+
+The first sequence `TGCAAATCTAACGAAGTGCTCCTGGACG` occurs 460,089 times.
+
+Convert the fasta format so that the number of occurrences comes right after the sequence:
+
+```
+TGCAAATCTAACGAAGTGCTCCTGGACG 460089
+CGTTATTTTACTTATTCCGTGGGTCGGAAGCGGGGCA 206928
+TTAACACATGCAAATCTAACGAAGTGCTCCTGGACG 195873
+```
+
+```{bash, eval=FALSE}
+
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/sRNA_data/trimmed_fastq/mapped/fasta
+
+# Collapse fasta files
+for i in *fa; do
+  srun -p medium --time=00:20:00 ~/bin/fastx_toolkit/fastx_collapser -i $i -o collapsed/${i%%.*}.fa &
+done
+
+
+# Format and sort data by sequence name
+for i in *.fa; do
+  prefix=$(basename ${i%%.*})
+  awk -v RS='\n>' -v ORS='\n>' -v OFS='' -F'\n' '{$1=$1 "\t"}1' $i | \
+          awk 'BEGIN {FS = "-"}{print $2}' | awk '{print $2"\t"$1}' | \
+          sed '$ d' | sort -k1,1  > formated/${prefix}.txt
+done
+
+```
+
+## Merge data
+
+Merge all raw read count into one large matrix with samples in columns and sequence in rows. We used a java script that creates a bash command using the unix function `join`. The bash script is then launched and the output files are `merged_dataset.csv` and `merged_dataset_with_header.csv`, the only difference being the added header in the latter.
+
+```{bash, eval=FALSE}
+# Convert underscore in hyphens so the suffix stay in the header
+rename "_" "-" *txt
+
+# specific the absolute path (. for current directory creates a bug). 
+# Don't forget the final slash
+
+# Load java
+module load openjdk/17.0.11_9
+
+directory="/mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/sRNA_data/trimmed_fastq/mapped/fasta/collapsed/formated/"
+
+java -jar /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/sRNA_data/scripts/GenerateDatasetJoinShellScript/dist/GenerateDatasetJoinShellScript.jar \
+    -fileEnding txt -directory $directory
+
+# Remove txt suffix that are added in header of the file
+sed -i 's/\.txt//g' header.csv
+
+srun -p medium --time=01:00:00 bash merge_datasets.sh &
+
+```
+
+
+```{bash, eval=FALSE}
+
+# I need to remove the name of the first column (sequence)
+sed -i 's/sequence//' header.csv
+
+# Put back underscores in header
+sed -i 's/-/_/g' header.csv
+
+# Add header
+cat header.csv merged_dataset.csv > cts_with_header.txt
+
+unix2dos cts_with_header.txt
+
+cut -d' ' -f1 merged_dataset.csv > sequences_sRNAs.txt
+
+wc -l sequences_sRNAs.txt
+56668221 sequences_sRNAs.txt
+
+# 56M sRNAs => That will be heavy in R ...
+
+# Reduce by keeping only sequence between 17 and 40
+srun -p medium --time=01:00:00 awk 'length($1) < 41 { print }' merged_dataset.csv > merged_dataset_17_40nt.csv
+
+# Most sRNAs have a row sum of 1, indicating they are present in 
+# only one sample with one read count. 
+# These are not going to help with the analysis so I can discard them
+srun -p medium --time=01:00:00 awk '{x=0;for(i=2;i<=NF;i++)x=x+$i} x>1 {print $0}' merged_dataset_17_40nt.csv > merged_dataset_17_40nt_countmin1.csv
+
+wc -l merged_dataset_17_40nt_countmin1.csv
+17140709 merged_dataset_17_40nt_countmin1.csv
+
+# Still 17M sequences ...
+
+# Remove sRNA with lower than 5 read counts
+srun -p medium --time=01:00:00 awk '{x=0;for(i=2;i<=NF;i++)x=x+$i} x>4 {print $0}' merged_dataset_17_40nt_countmin1.csv > merged_dataset_17_40nt_countmin5.csv
+
+wc -l merged_dataset_17_40nt_countmin5.csv
+4534719 merged_dataset_17_40nt_countmin5.csv
+
+# 4.5M, now it is manageable
+
+cat header.csv merged_dataset_17_40nt_countmin5.csv > merged_dataset_17_40nt_countmin5_with_header.csv
+
+unix2dos merged_dataset_17_40nt_countmin5_with_header.csv
+
+cut -d' ' -f1 merged_dataset_17_40nt_countmin5.csv > sequences_sRNAs_17_40nt_countmin5.txt
+```
+
+Get data in R and generate R objects
+
+```{r}
+
+all_sRNAs_18_40nt <- read.table("data/sequences_sRNAs_17_40nt_countmin5.txt", quote="\"", comment.char="")
+
+make_fasta(vector_sequence = all_sRNAs_18_40nt$V1, path_output = "data/all_sRNAs_18_40nt.fa")
+
+```
+
+
+
+## PCA small RNA expression (Fig. 4A)
+
+```{r}
+# Import the cts matrix (not gene name is now the row name => required)
+cts <- read.table("data/srnaseq/merged_dataset_17_40nt_countmin5_with_header.csv", header=TRUE, row.names=1, check.names = FALSE)
+
+# Create a more compact R object
+saveRDS(cts,"data/srnaseq/cts.Rds")
+
+cts <- readRDS("data/srnaseq/cts.Rds")
+
+# Upload the coldata file
+coldata <- read.table("data/srnaseq/coldata.txt", header=T)
+
+# Convert the variables into factors
+col_names <- names(coldata)
+coldata[,col_names] <- lapply(coldata[,col_names] , factor)
+
+### Check that sample names match in both files
+all(colnames(cts) == coldata$sample)
+
+```
+
+
+```{r}
+# Create a DESeqDataSet object
+dds <- DESeqDataSetFromMatrix(countData = cts,
+                              colData = coldata,
+                              design= ~genotype)
+
+# Variance stabilizing transformation
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "genotype"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+
+p <- ggplot(pcaData, aes(PC1, PC2, label=genotype, color=genotype)) +  
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) + 
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +  
+  theme_bw() +  
+  ggtitle("PCA sRNA expression") + 
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+p + geom_text(size = 3.5)
+
+```
+
+```{r}
+# Create a DESeqDataSet object
+dds <- DESeqDataSetFromMatrix(countData = cts,
+                              colData = coldata,
+                              design= ~lane)
+
+# Variance stabilizing transformation
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "lane"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+p <- ggplot(pcaData, aes(PC1, PC2, label=sample, color=lane)) +  
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) + 
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +  
+  theme_bw() +  
+  ggtitle("PCA sRNA expression") + 
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+p + geom_text(size = 3)
+
+```
+Lane1 was sequencing on older BGISEQ-500 platform and cluster aparts from lane2 and lane3 (DNBSEQ-G400).
+
+It could also be that the library processing was different (done later for lane2 and lane3).
+
+
+
+```{r}
+# Create a DESeqDataSet object
+dds <- DESeqDataSetFromMatrix(countData = cts,
+                              colData = coldata,
+                              design= ~NOR)
+
+# Variance stabilizing transformation
+vsd <- vst(dds, blind=FALSE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "NOR"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+p <- ggplot(pcaData, aes(PC1, PC2, color=NOR)) +  
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) + 
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +  
+  theme_bw() +  
+  ggtitle("PCA sRNA expression") + 
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+p + geom_point(size = 3)
+
+```
+
+
+## Reads per million analysis
+
+Normalize raw read count into reads per million to compare samples with each other.
+
+```{r}
+# Import the cts matrix (not gene name is now the row name => required)
+cts <- readRDS("data/srnaseq/cts.Rds")
+
+# Upload the coldata file
+coldata <- read.table("data/srnaseq/coldata.txt", header=T)
+
+# Convert the variables into factors
+col_names <- names(coldata)
+coldata[,col_names] <- lapply(coldata[,col_names] , factor)
+
+### Check that sample names match in both files
+all(colnames(cts) == coldata$sample)
+
+```
+
+
+```{r}
+
+m_cts <- as.matrix(cts)
+
+# RPM normalize by dividing each value by the sum of the column and multiply by 1e6
+rpm <- sweep(m_cts, 2, colSums(m_cts),`/`)
+rpm <- rpm * 1e6
+
+# Check, every column should sum to 1e6
+colSums(rpm)
+# 1e6
+
+# Turn into dataframe
+df_RPM <- as.data.frame(rpm)
+
+# Put seq as variable and add size variable
+df_RPM <- df_RPM %>% rownames_to_column(var="sequence")
+df_RPM$size <- nchar(df_RPM$sequence)
+
+# Set size and sequence as factor
+df_RPM$size <- as.factor(df_RPM$size)
+df_RPM$sequence <- as.factor(df_RPM$sequence)
+
+df_RPM <- df_RPM %>% relocate(size, .after=sequence)
+
+saveRDS(df_RPM, "data/df_RPM.Rds")
+
+# Turn into a long list
+
+df_RPM <- readRDS("data/df_RPM.Rds")
+
+# Move to long list
+df_RPM_long <- df_RPM %>% gather(sample, RPM, B73_rep1:m047xMo17_rep3)
+
+# sample as factor
+df_RPM_long$sample <- as.factor(df_RPM_long$sample)
+
+# Create a factor genotype to remove rep suffix
+df_RPM_long$genotype <- sub("_.*", "", df_RPM_long$sample)
+
+df_RPM_long$genotype <- as.factor(df_RPM_long$genotype)
+
+# Save object
+saveRDS(df_RPM_long, "data/srnaseq/df_RPM_long.Rds")
+
+```
+
+
+### sRNA expression overview
+
+```{r}
+
+df_RPM_long <- readRDS("data/srnaseq/df_RPM_long.Rds")
+
+
+long_df_rpm_size <- df_RPM_long %>% group_by(size, sample) %>% 
+  summarize(RPM=sum(RPM), nb_sequence=n(), .groups='drop') %>% 
+  arrange(RPM)
+
+long_df_rpm_size$genotype <- sub("_.*", "", long_df_rpm_size$sample)
+long_df_rpm_size$genotype <- as.factor(long_df_rpm_size$genotype)
+
+long_df_rpm_size_mean <- long_df_rpm_size %>% group_by(size, genotype) %>% 
+  summarize(RPM_mean=sum(RPM)/n(), ngroup=n(), sd=sd(RPM), .groups='drop')
+
+
+ggplot(long_df_rpm_size_mean, aes(x = size, y = RPM_mean, fill = genotype)) +
+  geom_bar(stat = "identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin = RPM_mean - sd, ymax = RPM_mean + sd),
+    width = .5,
+    position = position_dodge(.9)
+  ) +
+  theme_bw() +
+  ylab("RPM") +
+  xlab("Size in nt") +
+  ggtitle("sRNA expression profile") +
+  theme(axis.text.x = element_text(color = "black"), 
+        axis.text.y = element_text(color = "black"), 
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_y_continuous(labels = scales::comma_format())
+
+```
+
+
+Show only B73, Mo17, and F1:
+
+```{r}
+
+
+long_df_rpm_size_mean %>% filter(genotype %in% c("B73","Mo17","B73xMo17")) %>%
+ggplot(aes(x = size, y = RPM_mean, fill = genotype)) +
+  geom_bar(stat = "identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin = RPM_mean - sd, ymax = RPM_mean + sd),
+    width = .5,
+    position = position_dodge(.9)
+  ) +
+  theme_bw() +
+  ylab("RPM") +
+  xlab("Size in nt") +
+  ggtitle("sRNA expression profile") +
+  theme(axis.text.x = element_text(color = "black"), 
+        axis.text.y = element_text(color = "black"), 
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_y_continuous(labels = scales::comma_format())
+
+```
+### Sequence diversity
+
+```{r}
+
+df_RPM_long <- readRDS("data/srnaseq/df_RPM_long.Rds")
+
+df_RPM_long_sum <- df_RPM_long %>% filter(RPM>0) %>% group_by(size, genotype) %>% 
+  summarize(n_sum=n_distinct(sequence), .groups='drop')
+
+df_RPM_long_sum %>% 
+  ggplot(aes(x = size, y = n_sum, fill = genotype)) +
+  geom_bar(stat = "identity", position=position_dodge()) +
+  theme_bw() +
+  ggtitle("sRNA sequence diversity") +
+  ylab("Number of sRNAs") +
+  xlab("Size in nt") +
+  theme(axis.text.x = element_text(color = "black"), 
+        axis.text.y = element_text(color = "black"), 
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_y_continuous(labels = scales::comma_format())
+
+```
+
+
+## UNITAS analysis all sRNAs
+
+Run UNITAS on all 4M sRNAs found across libraries
+
+
+### Install software
+
+Install UNITAS v1.9.1 from GitHub (https://github.com/d-gebert/unitas)
+
+```{bash, eval=FALSE}
+chmod +x unitas_1.9.1.pl
+
+cpan install Archive::Extract Getopt::Long File::Path LWP::Simple
+
+# LWP::Protocol::https already installed 
+perldoc -l LWP::Protocol::https
+
+# Get maize database
+perl unitas_1.9.1.pl -refdump -species Zea_mays
+
+```
+
+### Get TE annotation
+
+Get the TE annotation from B73 NAM5:
+
+```{bash, eval=FALSE}
+
+# Integrate TE annotation in UNITAS output
+
+# Download B73 NAM5 TE annotation
+wget https://raw.githubusercontent.com/oushujun/MTEC/master/maizeTE02052020
+# Note: This version was now put in the "history" folder. A new version is available (maizeTE04092026)
+# with 40 new TEs annotated
+
+# I just need to add the prefix "TE|" so that Unitas 
+# classifies the mapped sRNAs in the TE category
+seqkit replace -p ^ -r "TE|" maizeTE02052020.fa > maizeTE02052020_renamed.fa
+
+```
+
+### Run Unitas
+
+```{bash, eval=FALSE}
+# Rename headers of input fasta file with a running number to avoid issue with UNITAS
+#seqkit replace -p .+ -r "seq_{nr}" all_sRNAs_18_40nt.fa > all_sRNAs_18_40nt.renamed.fa
+
+# Run Unitas
+perl unitas_1.9.1.pl -input all_sRNAs_18_40nt.fa \
+    -refseq maizeTE02052020_renamed.fa -species Zea_mays
+```
+
+
+### R plotting
+
+#### Integrate output UNITAS into a R dataframe
+
+```{r}
+
+df_RPM_long <- readRDS("data/srnaseq/df_RPM_long.Rds")
+
+# Fasta output of UNITAS
+df_rRFs <- fasta_to_df("data/srnaseq/unitas/fasta/unitas.rRNA.fas")
+df_PC_genes <- fasta_to_df("data/srnaseq/unitas/fasta/unitas.protein_coding.fas")
+df_TEs_unitas <- fasta_to_df("data/srnaseq/unitas/fasta/unitas.TE.fas")
+df_tRFs_unitas <- fasta_to_df("data/srnaseq/unitas/fasta/unitas.tRNA.fas")
+
+df_RPM_long_unitas <- df_RPM_long %>%
+  mutate(category = ifelse((sequence %in% df_tRFs_unitas$sequence),
+    "tRNA", ifelse((sequence %in% df_rRFs$sequence), "rRNA",
+      ifelse((sequence %in% df_PC_genes$sequence), "PC_genes",
+        ifelse((sequence %in% df_TEs_unitas$sequence), "TEs", "others")
+      )
+    )
+  ))
+
+df_RPM_long_unitas$category <- as.factor(df_RPM_long_unitas$category)
+
+saveRDS(df_RPM_long_unitas, "data/srnaseq/df_RPM_long_unitas.Rds")
+
+```
+
+#### Sequence diversity per category
+
+```{r}
+
+df_RPM_long_unitas <- readRDS("data/srnaseq/df_RPM_long_unitas.Rds")
+
+df_RPM_long_unitas_sum <- df_RPM_long_unitas %>% filter(RPM>0) %>% group_by(category, genotype) %>% summarize(n_sum=n_distinct(sequence), .groups='drop')
+
+col <-c("#7b3294","#c2a5cf","#a6dba0","#008837","gray")
+
+# Order categories
+df_RPM_long_unitas_sum$category <- 
+  factor(df_RPM_long_unitas_sum$category, levels = c("rRNA", "tRNA", "PC_genes", "TEs", "others"))
+
+df_RPM_long_unitas_sum$genotype <- factor(df_RPM_long_unitas_sum$genotype, levels = c("B73", "Mo17", "B73xMo17", "b015", "B73xb015", "b131", "b131xB73", "b172", "b172xB73", "B73xb172", "m047", "m047xMo17"), ordered = T)
+
+
+ggplot(df_RPM_long_unitas_sum, 
+             aes(x=genotype, y=n_sum, fill=category)) + 
+  geom_bar(stat="identity", position="dodge") + 
+  theme_bw() + 
+  scale_fill_manual(values=col) +
+  ylab("Number of sRNAs") + 
+  xlab("") + 
+  ggtitle("sRNA sequence diversity") + 
+  theme(plot.title = element_text(hjust = 0.5))  + 
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) + 
+  scale_y_continuous(labels = scales::comma_format())
+
+```
+
+![](images/sRNA_sequence_diversity.png)
+
+
+```{r}
+col <-c("#7b3294","#c2a5cf","#a6dba0","#008837","gray")
+
+ggplot(df_RPM_long_unitas_sum, aes(x = genotype, y=n_sum, fill=category)) + 
+  geom_bar(stat = "identity") +
+  theme_bw() + 
+  scale_fill_manual(values=col) +
+  ylab("Number of sRNAs") + 
+  xlab("") + 
+  ggtitle("sRNA sequence diversity") + 
+  theme(plot.title = element_text(hjust = 0.5))  + 
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) + 
+  scale_y_continuous(labels = scales::comma_format()) 
+```
+![](images/sRNA_sequence_diversity_stack.png)
+
+#### Expression per category (Fig. 5B)
+
+```{r}
+
+df_RPM_long_unitas_sum <- df_RPM_long_unitas %>% group_by(category, sample, genotype) %>% summarize(RPM_sum=sum(RPM), .groups='drop')
+
+df_RPM_long_unitas_mean  <- df_RPM_long_unitas_sum %>% group_by(category, genotype) %>% 
+  summarize(RPM_mean=sum(RPM_sum)/n(), nb_sequence=n(), sd=sd(RPM_sum), .groups='drop')
+
+# Order categories
+
+col <-c("#7b3294","#c2a5cf","#a6dba0","#008837","gray")
+
+# Order categories
+df_RPM_long_unitas_mean$category <- 
+  factor(df_RPM_long_unitas_mean$category, levels = c("rRNA", "tRNA", "PC_genes", "TEs", "others"))
+
+df_RPM_long_unitas_mean$genotype <- factor(df_RPM_long_unitas_mean$genotype, levels = c("B73", "Mo17", "B73xMo17", "b015", "B73xb015", "b131", "b131xB73", "b172", "b172xB73", "B73xb172", "m047", "m047xMo17"), ordered = T)
+
+
+
+ggplot(df_RPM_long_unitas_mean, aes(x = genotype, y = RPM_mean, fill = category)) +
+  geom_bar(stat = "identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin = RPM_mean - sd, ymax = RPM_mean + sd),
+    width = .5,
+    position = position_dodge(.9)
+  ) +
+  theme_bw() +
+  scale_fill_manual(values=col) +
+  ylab("RPM") +
+  xlab("") +
+  ggtitle("sRNA abundance per category") + 
+   theme(axis.text.x = element_text(color = "black"), 
+        axis.text.y = element_text(color = "black"), 
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_y_continuous(labels = scales::comma_format())
+
+```
+
+
+# DE analysis rRFs
+
+Identify sRNAs that are differentially expressed and found in the TraPR data
+
+```{r}
+cts <- readRDS("data/srnaseq/cts.Rds")
+
+# Upload the coldata file
+coldata <- read.table("data/srnaseq/coldata.txt", header=T)
+
+df_rRFs <- fasta_to_df("data/srnaseq/unitas/fasta/unitas.rRNA.fas")
+
+cts_rRF <- cts[df_rRFs$sequence,]
+# 887k sequences
+
+seq_rRFs <- rownames(cts_rRF)
+seq_rRFs_20_24nt <- seq_rRFs[nchar(seq_rRFs)>19 & nchar(seq_rRFs)<25]
+
+cts_rRF_20_24nt <- cts_rRF[seq_rRFs_20_24nt,]
+# 236k
+
+# Keep only sRNAs found in the TraPR dataset
+sequences_trapr <- read.table("data/trapr/sequences_trapr.txt", quote="\"", comment.char="")
+
+idx <- rownames(cts_rRF_20_24nt) %in% sequences_trapr$V1
+
+cts_rRF_20_24nt_TraPR <- cts_rRF_20_24nt[idx,]
+
+```
+
+We end up with 47,125 20-24nt sRNAs annotated as rRFs and found in TraPR data
+
+
+
+
+## B73, Mo17, B73xMo17
+
+```{r}
+selection <- coldata %>% filter(genotype %in% c("B73","Mo17","B73xMo17")) %>% pull(sample)
+
+cts_sub <- cts_rRF_20_24nt_TraPR[, selection]
+
+coldata_sub <- coldata %>% filter(sample %in% selection)
+
+all(colnames(cts_sub) == coldata_sub$sample)
+
+dds <- DESeqDataSetFromMatrix(countData = cts_sub,
+                              colData = coldata_sub,
+                              design= ~ NOR)
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/srnaseq/sig_sRNA_B73_Mo17_F1.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+```
+
+8 sRNAs are DE
+
+```{r}
+EnhancedVolcano(res,
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "padj",
+  axisLabSize = 12,
+  xlab = bquote(~ Log[2] ~ Fold ~ Change),
+  ylab = bquote(~ -Log[10] ~ P ~ Value),
+  pCutoff = 0.05,
+  FCcutoff = 2,
+  labSize = 4,
+  title = "",
+  subtitle = "DE sRNAs Het vs Hom",
+  legendPosition = "bottom",
+  legendLabSize = 10,
+  legendIconSize = 4.0,
+  drawConnectors = TRUE,
+  widthConnectors = 0.75
+)
+```
+
+
+## b015, B73, B73xb015
+
+```{r}
+
+selection <- coldata %>% filter(genotype %in% c("b015","B73","B73xb015")) %>% pull(sample)
+
+cts_sub <- cts_rRF_20_24nt_TraPR[,selection]
+
+coldata_sub <- coldata %>% filter(sample %in% selection) 
+
+dds <- DESeqDataSetFromMatrix(countData = cts_sub,
+                              colData = coldata_sub,
+                              design= ~ NOR)
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/srnaseq/sig_sRNA_B73_b015_B73xb015.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+
+```
+
+
+2 sRNAs are DE
+
+```{r}
+EnhancedVolcano(res,
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "padj",
+  axisLabSize = 12,
+  xlab = bquote(~ Log[2] ~ Fold ~ Change),
+  ylab = bquote(~ -Log[10] ~ P ~ Value),
+  pCutoff = 0.05,
+  FCcutoff = 2,
+  labSize = 4,
+  title = "",
+  subtitle = "DE sRNAs Het vs Hom",
+  legendPosition = "bottom",
+  legendLabSize = 10,
+  legendIconSize = 4.0,
+  drawConnectors = TRUE,
+  widthConnectors = 0.75
+)
+```
+
+## b131, B73, b131xB73
+
+```{r}
+
+selection <- coldata %>% filter(genotype %in% c("b131","B73","b131xB73")) %>% pull(sample)
+
+cts_sub <- cts_rRF_20_24nt_TraPR[,selection]
+
+coldata_sub <- coldata %>% filter(sample %in% selection) 
+
+dds <- DESeqDataSetFromMatrix(countData = cts_sub,
+                              colData = coldata_sub,
+                              design= ~ NOR)
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/srnaseq/sig_sRNA_B73_b131_b131xB73.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+
+```
+
+
+0 DE sRNAs
+
+```{r}
+EnhancedVolcano(res,
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "padj",
+  axisLabSize = 12,
+  xlab = bquote(~ Log[2] ~ Fold ~ Change),
+  ylab = bquote(~ -Log[10] ~ P ~ Value),
+  pCutoff = 0.05,
+  FCcutoff = 2,
+  labSize = 4,
+  title = "",
+  subtitle = "DE sRNAs Het vs Hom",
+  legendPosition = "bottom",
+  legendLabSize = 10,
+  legendIconSize = 4.0,
+  drawConnectors = TRUE,
+  widthConnectors = 0.75
+)
+```
+
+
+## b172, B73, b172xB73
+
+```{r}
+
+selection <- coldata %>% filter(genotype %in% c("b172","B73","b172xB73")) %>% pull(sample)
+
+cts_sub <- cts_rRF_20_24nt_TraPR[,selection]
+
+coldata_sub <- coldata %>% filter(sample %in% selection) 
+
+dds <- DESeqDataSetFromMatrix(countData = cts_sub,
+                              colData = coldata_sub,
+                              design= ~ NOR)
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/srnaseq/sig_sRNA_b172_B73_b172xB73.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+
+```
+
+
+2 DE sRNAs
+
+```{r}
+EnhancedVolcano(res,
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "padj",
+  axisLabSize = 12,
+  xlab = bquote(~ Log[2] ~ Fold ~ Change),
+  ylab = bquote(~ -Log[10] ~ P ~ Value),
+  pCutoff = 0.05,
+  FCcutoff = 2,
+  labSize = 4,
+  title = "",
+  subtitle = "DE sRNAs Het vs Hom",
+  legendPosition = "bottom",
+  legendLabSize = 10,
+  legendIconSize = 4.0,
+  drawConnectors = TRUE,
+  widthConnectors = 0.75
+)
+```
+
+## b172, B73, B73xb172
+
+```{r}
+
+selection <- coldata %>% filter(genotype %in% c("b172","B73","B73xb172")) %>% pull(sample)
+
+cts_sub <- cts_rRF_20_24nt_TraPR[,selection]
+
+coldata_sub <- coldata %>% filter(sample %in% selection) 
+
+dds <- DESeqDataSetFromMatrix(countData = cts_sub,
+                              colData = coldata_sub,
+                              design= ~ NOR)
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/srnaseq/sig_sRNA_b172_B73_B73xb172.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+
+```
+
+
+0 DE sRNAs
+
+```{r}
+EnhancedVolcano(res,
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "padj",
+  axisLabSize = 12,
+  xlab = bquote(~ Log[2] ~ Fold ~ Change),
+  ylab = bquote(~ -Log[10] ~ P ~ Value),
+  pCutoff = 0.05,
+  FCcutoff = 2,
+  labSize = 4,
+  title = "",
+  subtitle = "DE sRNAs Het vs Hom",
+  legendPosition = "bottom",
+  legendLabSize = 10,
+  legendIconSize = 4.0,
+  drawConnectors = TRUE,
+  widthConnectors = 0.75
+)
+```
+
+
+
+## b172, B73, B73xb172, b172xB73
+
+```{r}
+
+selection <- coldata %>% filter(genotype %in% c("b172","B73","B73xb172","b172xB73")) %>% pull(sample)
+
+cts_sub <- cts_rRF_20_24nt_TraPR[,selection]
+
+coldata_sub <- coldata %>% filter(sample %in% selection) 
+
+dds <- DESeqDataSetFromMatrix(countData = cts_sub,
+                              colData = coldata_sub,
+                              design= ~ NOR)
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/srnaseq/sig_sRNA_b172_B73_B73xb172_b172xB73.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+
+```
+
+21 DE sRNAs
+
+```{r}
+EnhancedVolcano(res,
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "padj",
+  axisLabSize = 12,
+  xlab = bquote(~ Log[2] ~ Fold ~ Change),
+  ylab = bquote(~ -Log[10] ~ P ~ Value),
+  pCutoff = 0.05,
+  FCcutoff = 2,
+  labSize = 4,
+  title = "",
+  subtitle = "DE sRNAs Het vs Hom",
+  legendPosition = "bottom",
+  legendLabSize = 10,
+  legendIconSize = 4.0,
+  drawConnectors = TRUE,
+  widthConnectors = 0.75
+)
+```
+
+## Mo17, m047, m047xMo17
+
+```{r}
+
+selection <- coldata %>% filter(genotype %in% c("Mo17","m047","m047xMo17")) %>% pull(sample)
+
+cts_sub <- cts_rRF_20_24nt_TraPR[,selection]
+
+coldata_sub <- coldata %>% filter(sample %in% selection) 
+
+dds <- DESeqDataSetFromMatrix(countData = cts_sub,
+                              colData = coldata_sub,
+                              design= ~ NOR)
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/srnaseq/sig_sRNA_Mo17_m047_m047xMo17.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+
+```
+
+0 DE sRNAs
+
+```{r}
+EnhancedVolcano(res,
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "padj",
+  axisLabSize = 12,
+  xlab = bquote(~ Log[2] ~ Fold ~ Change),
+  ylab = bquote(~ -Log[10] ~ P ~ Value),
+  pCutoff = 0.05,
+  FCcutoff = 2,
+  labSize = 4,
+  title = "",
+  subtitle = "DE sRNAs Het vs Hom",
+  legendPosition = "bottom",
+  legendLabSize = 10,
+  legendIconSize = 4.0,
+  drawConnectors = TRUE,
+  widthConnectors = 0.75
+)
+```
+
+
+
+## Het vs Hom
+
+```{r}
+
+dds <- DESeqDataSetFromMatrix(countData = cts_rRF_20_24nt_TraPR,
+                              colData = coldata,
+                              design= ~ NOR)
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/srnaseq/sig_sRNA_het_vs_hom.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+
+```
+
+0 sRNAs
+
+```{r}
+EnhancedVolcano(res,
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "padj",
+  axisLabSize = 12,
+  xlab = bquote(~ Log[2] ~ Fold ~ Change),
+  ylab = bquote(~ -Log[10] ~ P ~ Value),
+  pCutoff = 0.05,
+  FCcutoff = 2,
+  labSize = 4,
+  title = "",
+  subtitle = "DE sRNAs Het vs Hom",
+  legendPosition = "bottom",
+  legendLabSize = 10,
+  legendIconSize = 4.0,
+  drawConnectors = TRUE,
+  widthConnectors = 0.75
+)
+```
+
+
+## Het vs Hom lane 1
+
+```{r}
+
+selection <- coldata %>% filter(lane == "lane1") %>% pull(sample)
+
+cts_sub <- cts_rRF_20_24nt_TraPR[,selection]
+
+coldata_sub <- coldata %>% filter(sample %in% selection) 
+
+dds <- DESeqDataSetFromMatrix(countData = cts_sub,
+                              colData = coldata_sub,
+                              design= ~ NOR)
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/srnaseq/sig_sRNA_het_vs_hom_lane1.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+
+```
+
+0 sRNAs
+
+
+
+
+## Het vs Hom lane 2
+
+```{r}
+
+selection <- coldata %>% filter(lane == "lane2") %>% pull(sample)
+
+cts_sub <- cts_rRF_20_24nt_TraPR[,selection]
+
+coldata_sub <- coldata %>% filter(sample %in% selection) 
+
+dds <- DESeqDataSetFromMatrix(countData = cts_sub,
+                              colData = coldata_sub,
+                              design= ~ NOR)
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/srnaseq/sig_sRNA_het_vs_hom_lane2.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+
+```
+
+
+## Het vs Hom lane 3
+
+```{r}
+
+selection <- coldata %>% filter(lane == "lane3") %>% pull(sample)
+
+cts_sub <- cts_rRF_20_24nt_TraPR[,selection]
+
+coldata_sub <- coldata %>% filter(sample %in% selection) 
+
+dds <- DESeqDataSetFromMatrix(countData = cts_sub,
+                              colData = coldata_sub,
+                              design= ~ NOR)
+
+# Perform differential expression analysis
+dds <- DESeq(dds)
+
+# Create a DESeqResults object
+res <- results(dds, contrast = c("NOR","heterozygous","homozygous"))
+
+summary(res)
+
+DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
+
+sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
+
+write.table(sigDEG, "data/srnaseq/sig_sRNA_het_vs_hom_lane3.txt",
+            quote=FALSE, row.names=FALSE, sep="\t")
+
+
+```
+
+26 DE
+
+```{r}
+EnhancedVolcano(res,
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "padj",
+  axisLabSize = 12,
+  xlab = bquote(~ Log[2] ~ Fold ~ Change),
+  ylab = bquote(~ -Log[10] ~ P ~ Value),
+  pCutoff = 0.05,
+  FCcutoff = 2,
+  labSize = 4,
+  title = "",
+  subtitle = "DE sRNAs Het vs Hom",
+  legendPosition = "bottom",
+  legendLabSize = 10,
+  legendIconSize = 4.0,
+  drawConnectors = TRUE,
+  widthConnectors = 0.75
+)
+```
+
+#.
+
+# ##################################
+# Degradome analysis
+# ##################################
+
+Rename files and move them to workspace
+
+```{bash, eval=FALSE}
+
+# Create a workspace to store data
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/sRNA_data
+
+while read i; do 
+find /mnt/ceph-hdd/projects/scc_uanp_scholten/data/ngs_data/BGI_data/F22FTSEUHT1495_LIBogelR_degradome_NOR_NIL_pollen -type f -name $i -exec cp {} . \;
+done < file_to_find
+
+# Rename file for consistent names
+while read i; do
+$i
+done < rename.txt
+
+\ls -1 *gz
+B73.fq.gz
+B73xMo17.fq.gz
+Mo17.fq.gz
+b131.fq.gz
+b131xB73.fq.gz
+
+```
+
+
+## Fastqc raw reads
+
+```{bash, eval=FALSE}
+
+#!/bin/bash
+#
+#SBATCH --job-name=fastqc
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=10000
+#SBATCH --output=log/fastqc.%A.%a.out
+#SBATCH --error=log/fastqc.%A.%a.err
+#SBATCH --partition=scc-cpu
+#SBATCH --time=04:00:00
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-5
+
+module load miniforge3
+
+source activate bioinfo
+
+input_path=$(find . -type f -name "*.fq.gz" | sed -n ${SLURM_ARRAY_TASK_ID}p)
+
+fastqc $input_path -o fastqc_reports -t 8
+```
+
+```{bash, eval=FALSE}
+
+source activate bioinfo
+
+multiqc .
+
+```
+
+
+
+
+## Trimming
+
+Remove the 5' sequence matching the EcoP15I recognition site, then the 3' sequence containing the 3' adaptor sequence, then remove all trimmed sequences that are not 27-nt in length (expected length of the cutting site of EcoP15I downstream of the recognition site).
+
+```{bash, eval=FALSE}
+#!/bin/bash
+#
+#SBATCH --job-name=trimming_cutadapt
+#SBATCH --nodes=1
+#SBATCH --ntasks=6
+#SBATCH --mem=16000
+#SBATCH --output=log/slurm.%A.%a.out
+#SBATCH --error=log/slurm.%A.%a.err
+#SBATCH --partition=medium
+#SBATCH --time=01:00:00
+#SBATCH --array=1-5
+
+module load apptainer/1.3.4
+
+app_shortcut="apptainer run --bind /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/degradome_data /sw/container/bioinformatics/cutadapt-5.0.sif"
+
+input_path=$(find raw_fastq -type f -name "*.fq.gz" | sed -n ${SLURM_ARRAY_TASK_ID}p)
+input_file=$(basename $input_path)
+name_fastq=$(echo "$input_file" | cut -d_ -f1-3)
+
+echo "Processing file $input_path"
+
+if [ -e "trimmed_fastq/${name_fastq}.trimmed.fq.gz" ]; then
+  echo "$trimmed_fastq/${name_fastq}.trimmed.fq.gz already exists, skip $input_path"
+else
+  $app_shortcut cutadapt -j 0 -g AGCAG --discard-untrimmed $input_path | \
+  $app_shortcut cutadapt -j 0 -a AGATCGGAAGAGCACAC --discard-untrimmed - | \
+  $app_shortcut cutadapt -j 0 -m 27 -M 27 -o trimmed_fastq/${name_fastq}.trimmed.fq.gz -
+fi
+
+```
+
+```{bash, eval=FALSE}
+sbatch run_trimming.sh
+```
+
+
+## Fastqc trimmed reads
+
+```{bash, eval=FALSE}
+
+#!/bin/bash
+#
+#SBATCH --job-name=fastqc
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=10000
+#SBATCH --output=log/fastqc.%A.%a.out
+#SBATCH --error=log/fastqc.%A.%a.err
+#SBATCH --partition=scc-cpu
+#SBATCH --time=04:00:00
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-5
+
+module load miniforge3
+
+source activate bioinfo
+
+input_path=$(find . -type f -name "*.fq.gz" | sed -n ${SLURM_ARRAY_TASK_ID}p)
+
+fastqc $input_path -o fastqc_reports -t 8
+```
+
+```{bash, eval=FALSE}
+
+source activate bioinfo
+
+multiqc .
+
+```
+
+Report [here](data/degradome/fastqc/multiqc_report_trimmed.html)
+
+```{bash, eval=FALSE}
+
+seqkit stats *gz
+file                               format  type    num_seqs        sum_len  min_len  avg_len  max_len
+B73_L1_1.fq.gz.trimmed.fq.gz       FASTQ   DNA   39,489,827  1,066,225,329       27       27       27
+B73xMo17_L1_1.fq.gz.trimmed.fq.gz  FASTQ   DNA   34,685,260    936,502,020       27       27       27
+Mo17_L1_1.fq.gz.trimmed.fq.gz      FASTQ   DNA   26,412,468    713,136,636       27       27       27
+b131_L1_1.fq.gz.trimmed.fq.gz      FASTQ   DNA   34,601,558    934,242,066       27       27       27
+b131xB73_L1_1.fq.gz.trimmed.fq.gz  FASTQ   DNA   23,530,070    635,311,890       27       27       27
+
+```
+
+I retrieved here between 47%-57% reads (23-39M reads):
+
+| name     | raw        | filtered   | % left |
+|----------|------------|------------|--------|
+| b131     | 60,947,206 | 34,601,558 | 57%    |
+| b131xB73 | 50,033,986 | 23,530,070 | 47%    |
+| B73      | 69,981,483 | 39,489,827 | 56%    |
+| B73xMo17 | 64,517,900 | 34,685,260 | 54%    |
+| Mo17     | 46,577,577 | 26,412,468 | 57%    |
+
+
+## Mapping
+
+```{bash, eval=FALSE}
+
+mkdir -p mapped/fasta/collapsed/formated
+
+#!/bin/bash
+#SBATCH --job-name=bowtie2
+#SBATCH --output=slurm/job-%x-%j.out
+#SBATCH --error=slurm/job-%x-%j.err
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=12G
+#SBATCH --time=00:40:00
+#SBATCH --partition=medium
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-5
+
+module load gcc/14.2.0 samtools/1.21 bowtie/1.3.1
+
+index="/mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/B73_NAM5/bowtie_index/index_Zm_B73_NAM5"
+
+fastq_file=$(sed -n ${SLURM_ARRAY_TASK_ID}p list_files.txt)
+
+bowtie -S -l 37 -n 1 -x $index --threads 8 -q $fastq_file | \
+  samtools sort | samtools view -F 4 -b -o mapped/${fastq_file%%.*}.bam -
+
+# Convert to fasta
+samtools fasta -F 4 mapped/${fastq_file%%.*}.bam > mapped/fasta/${fastq_file%%.*}.fa
+
+```
+
+## Format data
+
+```{bash, eval=FALSE}
+
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/degradome_data/trimmed_fastq/mapped/fasta
+
+# Collapse fasta files
+for i in *fa; do
+  srun -p medium --time=00:20:00 ~/bin/fastx_toolkit/fastx_collapser -i $i -o collapsed/${i%%.*}.fa &
+done
+
+seqkit stats *fa
+processed files:  5 / 5 [======================================] ETA: 0s. done
+file         format  type   num_seqs      sum_len  min_len  avg_len  max_len
+B73.fa       FASTA   DNA   8,764,233  236,634,291       27       27       27
+B73xMo17.fa  FASTA   DNA   7,519,844  203,035,788       27       27       27
+Mo17.fa      FASTA   DNA   6,202,922  167,478,894       27       27       27
+b131.fa      FASTA   DNA   8,090,611  218,446,497       27       27       27
+b131xB73.fa  FASTA   DNA   6,526,856  176,225,112       27       27       27
+
+
+# Format and sort data by sequence name
+for i in *.fa; do
+  prefix=$(basename ${i%%.*})
+  awk -v RS='\n>' -v ORS='\n>' -v OFS='' -F'\n' '{$1=$1 "\t"}1' $i | \
+          awk 'BEGIN {FS = "-"}{print $2}' | awk '{print $2"\t"$1}' | \
+          sed '$ d' | sort -k1,1  > formated/${prefix}.txt
+done
+
+```
+
+## Merge data
+
+```{bash, eval=FALSE}
+# Convert underscore in hyphens so the suffix stay in the header
+rename "_" "-" *txt
+
+# specific the absolute path (. for current directory creates a bug). 
+# Don't forget the final slash
+
+# Load java
+module load openjdk/17.0.11_9
+
+directory="/mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/degradome_data/trimmed_fastq/mapped/fasta/collapsed/formated/"
+
+java -jar /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/sRNA_data/scripts/GenerateDatasetJoinShellScript/dist/GenerateDatasetJoinShellScript.jar \
+    -fileEnding txt -directory $directory
+
+# Remove txt suffix that are added in header of the file
+sed -i 's/\.txt//g' header.csv
+
+srun -p medium --time=01:00:00 bash merge_datasets.sh &
+
+# I need to remove the name of the first column (sequence)
+sed -i 's/sequence//' header.csv
+
+# Put back underscores in header
+sed -i 's/-/_/g' header.csv
+
+
+wc -l merged_dataset.csv
+22547584 merged_dataset.csv
+# 22.5M sequences
+
+# Add header
+cat header.csv merged_dataset.csv > cts_with_header.txt
+
+unix2dos cts_with_header.txt
+
+cut -d' ' -f1 merged_dataset.csv > sequences_degradome.txt
+
+
+```
+
+
+## PCA expression
+
+```{r}
+# Import the cts matrix (not gene name is now the row name => required)
+cts <- read.table("data/degradome/cts_with_header.txt", header=TRUE, row.names=1, check.names = FALSE)
+
+# Create a more compact R object
+saveRDS(cts,"data/degradome/cts.Rds")
+
+cts <- readRDS("data/degradome/cts.Rds")
+
+# Upload the coldata file
+coldata <- data.frame(
+  sample = c("B73", "B73xMo17", "Mo17", "b131", "b131xB73"),
+  NOR = c("homozygous", "heterozygous", "homozygous", "homozygous", "heterozygous")
+, stringsAsFactors = FALSE)
+
+# Convert the variables into factors
+coldata[,names(coldata)] <- lapply(coldata[,names(coldata)] , factor)
+
+### Check that sample names match in both files
+all(colnames(cts) == coldata$sample)
+
+```
+
+
+```{r}
+# Create a DESeqDataSet object
+dds <- DESeqDataSetFromMatrix(countData = cts,
+                              colData = coldata,
+                              design= ~sample)
+
+# Variance stabilizing transformation
+vsd <- vst(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "sample"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+
+p <- ggplot(pcaData, aes(PC1, PC2, color=sample)) +  
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) + 
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +  
+  theme_bw() +  
+  ggtitle("PCA sRNA expression") + 
+  theme(axis.text.x = element_text(color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.ticks = element_line(color = "black")) + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+p + geom_point(size = 3)
+
+```
+
+
+
+## Cleaveland analysis
+
+Clone Cleaveland repository from https://github.com/MikeAxtell/CleaveLand4 and install dependencies (see Cleaveland documentation).
+
+```{bash, eval=FALSE}
+
+# Get cDNA sequences from B73 NAM5
+wget https://download.maizegdb.org/Zm-B73-REFERENCE-NAM-5.0/Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.cdna.fa.gz
+gunzip Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.cdna.fa.gz
+
+```
+
+Install RNA-Vienna (2.7.1) https://www.tbi.univie.ac.at/RNA/
+
+```{bash, eval=FALSE}
+wget https://www.tbi.univie.ac.at/RNA/download/sourcecode/2_7_x/ViennaRNA-2.7.1.tar.gz
+
+tar -zxvf ViennaRNA-2.7.1.tar.gz
+cd ViennaRNA-2.7.1
+./configure --prefix=~/bin/ViennaRNA/bin
+make install
+
+# Test
+RNAplex --version
+RNAplex 2.7.1
+
+# Install perl module
+
+```
+
+
+Normal run to initiate the build of the degradome _dd file
+
+```{bash, eval=FALSE}
+
+#!/bin/bash
+#
+#SBATCH --job-name=Cleaveland
+#SBATCH --mem=10G
+#SBATCH --time=00:40:00
+#SBATCH --partition=medium
+#SBATCH --output=job-%x-%j.out # will be saved as job-{name}-{jobid}.out
+#SBATCH --error=job-%x-%j.err # will be saved as job-{name}-{jobid}.err
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+
+module load gcc bowtie samtools
+
+# Run cleaveland
+~/bin/CleaveLand4/CleaveLand4.pl -e SRR28009042.trimmed.fasta -u miR168a_sRNA.fa \
+  -n Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.cdna.fa \
+  -o degradome_plots_miR166a -t > miR166a.txt
+
+```
+
+### Understand p-value calculation
+
+SRR28009042.trimmed.fasta_dd.txt provides the following information in header:
+
+```
+# TranscriptomeCharacters	131706600
+# Mean Degradome Read Size	27
+# Estimated effective Transcriptome Size	129748047
+# Category 0	20803
+# Category 1	27670
+# Category 2	725444
+# Category 3	577507
+# Category 4	1735961
+```
+The Estimated effective Transcriptome Size (in nt) and the number of degradome peak of each category is given.
+
+Description of p-value calculation from Cleaveland4 manual:
+
+> The p-value takes into 
+    account both the noise in the degradome density file and the quality of 
+    the small RNA-transcriptome alignment. First, the chances of observing a 
+    degradome 'peak' of the given category by random chance is calculated. 
+    The chance is the total number of peaks of the given category divided by 
+    the effective transcriptome size*. Then, the quality of the alignment is 
+    simply the rank of the alignment in the GSTAr alignment file (which is 
+    either sorted by MFE ratio [default] or by Allen et al. score). The 
+    p-value is calculated as the binomial probability of observing one or 
+    more 'hits' in 'x' trials given probability 'c', where 'x' is the rank 
+    of the alignment, and 'c' is the chance described above.
+
+> The effective transcriptome size is the total number of bases in the 
+    transcriptome - (n * mean_read_size), where 'n' is the number of 
+    transcripts. This adjustment accounts for the fact that the very ends of 
+    the transcripts could not possibly have any mapped 5' ends. 
+
+
+```{r}
+transcriptome_size <- 129748047
+p_cat0 <- 20803/transcriptome_size
+p_cat1 <- 27670/transcriptome_size
+p_cat2 <- 725444/transcriptome_size
+p_cat3 <- 577507/transcriptome_size
+p_cat4 <- 1735961/transcriptome_size
+
+# If the sRNA X returns 4 aligments in GSTaR, Cleaveland order them by decreasing MFEratio (or increasing Allen's score) and assign a p-value to each
+
+# First alignment is category 0
+pbinom(0, size=1, prob=p_cat0, lower.tail=F)
+# 0.0001603338
+
+# Second alignment is category 1
+pbinom(0, size=2, prob=p_cat1, lower.tail=F)
+# 0.0004264735
+
+# Third alignment is category 3
+pbinom(0, size=3, prob=p_cat3, lower.tail=F)
+# 0.01329362
+
+# Fourth alignment is category 4
+pbinom(0, size=4, prob=p_cat4, lower.tail=F)
+# 0.05245339
+
+```
+
+The 3 first alignments return a significant p-values but not the fourth. This because it much more likely for a sRNA to map a degradome peak of category 4 because there are many more of these peaks.
+
+
+## HPC implementation
+
+HPC implementation => See slide 776 Pollen PWT
+
+- Change of script GSTAr.pl => GSTAr_v1.pl to create a more complex unique job identifier to avoid concurrent GSTAr runs to use the same temporary files.
+
+```{bash, eval=FALSE}
+# Old job ID function
+#my $id_file = int(rand(10000));
+# New job ID function
+my $id_file = int(gettimeofday * 100000000);
+
+```
+
+
+## Analysis miRNAs
+
+Analyze the 33 miRNAs identified in our data.
+
+```{bash, eval=FALSE}
+
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-pollen_project/pollen_vesicles/data/degradome/cleaveland_analysis
+
+module load gcc/14.2.0 bowtie/1.3.1
+
+srun --time=03:00:00 --mem=500M -p medium perl ~/bin/CleaveLand4/GSTAr_v1-0/GSTAr_v1.pl -t miRNA_present.fa Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.cdna.fa > GSTAR_output/miRNA_present.gstar.txt &
+
+# Do on ASUS (because HPC misses perl libraries)
+perl ~/bin/CleaveLand4/CleaveLand4.pl -g GSTAR_output/miRNA_present.gstar.txt -d SRR28009042.trimmed.fasta_dd.txt -o degradome_plots -t > miRNA_results.txt
+
+```
+
+
+```{r}
+
+# Get significant hits
+df_cleaveland_raw <- read.delim("data/cleaveland_analysis/miRNAs/miRNA_results.txt", 
+                                header=TRUE, skip = 8)
+
+# Retrieve query sRNAs and target region from column "Sequence"
+df_cleaveland <- df_cleaveland_raw %>% 
+  separate(Sequence, c("target_seq", "query_seq"),sep = "&", remove=F)
+
+# Change Us to Ts
+df_cleaveland$target_seq <- gsub("U", "T", df_cleaveland$target_seq)
+df_cleaveland$query_seq <- gsub("U", "T", df_cleaveland$query_seq)
+
+# Remove hyphens from sequences (prevent querying afterwards)
+df_cleaveland$target_seq <- gsub("-", "", df_cleaveland$target_seq)
+df_cleaveland$query_seq <- gsub("-", "", df_cleaveland$query_seq)
+
+# Get unique geneID
+df_cleaveland <- df_cleaveland %>% 
+  separate(Transcript, c("geneID", "Tnum"),sep = "_", remove = F)
+
+
+df_miRNA <- fasta_to_df("data/mature_zma_U_to_T.fa")
+df_miRNA$size <- nchar(df_miRNA$sequence)
+df_miRNA$miR_family <- sub(".*(miR[0-9]+)[a-z]?.*", "\\1", df_miRNA$id)
+
+df_miRNA_sub <- df_miRNA %>% select(sequence,miR_family) %>% unique()
+
+df_cleaveland_miRNA <- merge(df_cleaveland, df_miRNA_sub, by.x="query_seq", by.y="sequence")
+
+df_cleaveland_miRNA <- df_cleaveland_miRNA %>% relocate(miR_family, .before="DegradomeCategory")
+
+write_delim(df_cleaveland_miRNA, "data/cleaveland_analysis/miRNAs/miRNAs_results_summary.txt", delim="\t")
+
+df_cleaveland_cleaned <- df_cleaveland_miRNA %>% filter(DegradomePval < 0.05) %>%
+  filter(DegradomeCategory %in% c("0","1"))
+
+# Number of genes targeted
+length(unique(df_cleaveland_cleaned$geneID))
+# 19
+
+# Number of miRNAs overlapping target genes
+length(unique(df_cleaveland_cleaned$query_seq))
+# 11
+
+writeLines(unique(df_cleaveland_cleaned$geneID))
+
+```
+
+
+## Cleaveland run on RISC-loaded rRFs
+
+Focus on 20-24nt rDNA-mapped sRNAs also found in the TraPR dataset.
+
+```{bash, eval=FALSE}
+
+
+
+```
+
+
+
+
+#.
 
 # Author
 
