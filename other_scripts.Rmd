@@ -1,0 +1,630 @@
+---
+title: "other_scripts"
+author: "Johan Zicola"
+date: "2026-08-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+# barrnap v1.10.6 (kingdom = fun)
+
+
+```{bash, eval=FALSE}
+module load miniforge3
+
+# Create a conda environment
+conda create -n barrnap -c bioconda -c conda-forge barrnap
+
+source activate barrnap
+
+# Update databases
+barrnap --updatedb
+
+barrnap --listdb
+
+barrnap --listdb
+[barrnap] Database home: /mnt/vast-standard/home/zicola/u14929/.conda/envs/barrnap/db
+[barrnap] --kingdom 'arc' has: tRNA tmRNA CDS ncRNA rRNA
+[barrnap] --kingdom 'bac' has: tRNA tmRNA CDS ncRNA rRNA
+[barrnap] --kingdom 'fun' has: tRNA tmRNA CDS ncRNA rRNA
+
+```
+
+```{bash, eval=FALSE}
+
+source activate barrnap
+
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/rdna_annotation
+
+input_fasta="/mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/B73_NAM5/Zm-B73-REFERENCE-NAM-5.0.fa"
+
+srun -p medium --cpus-per-task=8 --time=04:00:00 barrnap --threads 8 --kingdom fun $input_fasta --outseq B73_NAM5_rRNA.fa  &
+
+# Output is barrnap.bed and B73_NAM5_rRNA.fa. No gff file. I forgot to redirect stdout
+
+srun -p medium --cpus-per-task=12 --time=04:00:00 barrnap --threads 12 --kingdom fun $input_fasta --outseq B73_NAM5_rRNA.fa > B73_NAM5_rRNA.gff &
+
+```
+
+Last chunk of stdout => run completed properly:
+
+```
+[barrnap] Found 1462 features:
+[barrnap] 1462 rRNA
+[barrnap] Make a full GFF with sequences using --incseq --incseqreg
+[barrnap] Done.
+
+```
+
+```{bash, eval=FALSE}
+wc -l B73_NAM5_rRNA.gff
+1463 B73_NAM5_rRNA.gff
+
+grep "5S" B73_NAM5_rRNA.gff | wc -l
+770
+
+grep "5.8" B73_NAM5_rRNA.gff | wc -l
+121
+
+grep "18S" B73_NAM5_rRNA.gff | wc -l
+692
+
+grep "28S" B73_NAM5_rRNA.gff | wc -l
+0
+
+```
+
+
+barrnap v1.10.6 misses all 28S and most 5.8S 
+
+# Phenotype
+
+
+```{r}
+
+df <- read.delim("data/phenotyping/data_phenotyping_growth_chamber.txt", stringsAsFactors = T, dec = ",")
+
+# Transform data in long format
+long_df <- df %>% gather(DAS, height, DAS4:DAS22)
+
+# Turn DAS into factor
+long_df$DAS <- as.factor(long_df$DAS)
+
+# Order DAS
+long_df$DAS <- factor(long_df$DAS, levels = c("DAS4", "DAS7", "DAS10", "DAS13", "DAS16", "DAS19", "DAS22"), ordered = T)
+
+# Order genotype
+long_df$line <- factor(long_df$line, levels = c("B73", "Mo17", "B73xMo17", "b015", "B73xb015", "b131", "b131xB73", "b172", "b172xB73", "B73xb172", "m047", "m047xMo17"), ordered = T)
+
+# Order groups
+long_df$group <- factor(long_df$group, levels = c("B73", "Mo17", "B73xMo17", "B73_NIL", "B73_NIL_cross", "Mo17_NIL", "Mo17_NIL_cross"), ordered = T)
+
+# Order categories
+long_df$category <- factor(long_df$category, levels = c("B73", "Mo17", "B73xMo17", "b015", "b131", "b172", "m047"), ordered = T)
+
+long_df$NOR <- factor(long_df$NOR, levels = c("homozygous","heterozygous"))
+
+long_df$height <- as.numeric(long_df$height)
+
+saveRDS(long_df, "data/phenotyping/data_phenotyping_growth_chamber.Rds")
+
+```
+
+# Cluster by heterozygosity
+
+```{r}
+
+col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
+
+df_DAS13$category <- factor(df_DAS13$category, 
+                            levels = c("B73", "Mo17","B73xMo17", "b015","b131","b172","m047"))
+
+
+df_DAS13 %>% ggboxplot(
+  x = "NOR", y = "height", ylab = "Plant height (cm)", 
+  xlab = "NOR", color = "category", add = "dotplot", palette = col, add.params = list(size = 0.5, alpha = 0.2), outlier.shape = NA
+) + theme_bw() + expand_limits(y = 0) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Plant height 13 days after sowing") + theme(plot.title = element_text(hjust = 0.5)) +
+  geom_hline(yintercept = MPV, linetype = "dashed", color = "black") + theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+ scale_y_continuous(labels = scales::comma_format())
+
+
+```
+
+
+# Plant growth indoor data
+
+## Plant height across time points
+
+```{r}
+df <- readRDS("data/phenotyping/data_phenotyping_growth_chamber.Rds")
+
+df %>% ggbarplot("DAS", "height", fill = "line", color = "line", 
+                 position = position_dodge(0.9), add = "mean_se") + 
+  ylab("Plant height in cm") + xlab("Days after sowing") + 
+  ggtitle("Plant height") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+![](images/overview_timepoints_growth_chamber.png)
+
+
+## Summary at 22 DAS
+
+### Overview
+
+```{r}
+df <- readRDS("data/phenotyping/data_phenotyping_growth_chamber.Rds")
+
+df_DAS22 <- df %>% filter(DAS=="DAS22")
+
+MPV <- (mean(df_DAS22[df_DAS22$line=="B73", ]$height) + mean(df_DAS22[df_DAS22$line=="Mo17", ]$height))/2
+
+F1 <- mean(df_DAS22[df_DAS22$line=="B73xMo17", ]$height)
+
+MPH <- ((F1-MPV)/MPV)
+
+col <- c("#d95f02", "#1b9e77")
+
+ggboxplot(df_DAS22, x="line", y="height",color="NOR",
+          ylab="Plant height (cm)", xlab="Genotype", add="dotplot", 
+          palette=col, add.params = list(size = 1, alpha = 0.2), outlier.shape = NA) + 
+      theme(axis.text.x = element_text(angle=45, hjust=1)) +  
+      ggtitle("Plant height at 22 DAS")+  theme(plot.title = element_text(hjust = 0.5)) + 
+      geom_hline(yintercept=MPV, linetype="dashed", color = "black")  + expand_limits(y = 0)
+```
+
+![](images/plant_height_DAS22.png)
+
+### By experiment
+
+```{r}
+col=c("#1b9e77","#d95f02","#7570b3")
+
+ggboxplot(df_DAS22, "line", "height", color = "experiment", add="dotplot", 
+          xlab="genotype", ylab="Plant height in cm", title="Plant height at 22 DAS across the 3 experiments",
+          palette=col, 
+          add.params = list(size = 0.7, alpha = 0.2), outlier.shape = NA) + theme_bw() +
+  rotate_x_text(45) + expand_limits(y = 0) +  theme(axis.text.x = element_text(color="black"), 
+      axis.text.y = element_text(color="black"),
+      axis.ticks = element_line(color = "black")) + 
+      theme(plot.title = element_text(hjust = 0.5)) + 
+      scale_y_continuous(labels = scales::comma_format())
+```
+
+![](images/plant_height_DAS22_by_experiment.png)
+
+The replicated experiments are consistent across genotypes.
+
+
+
+## Comparison heterozygous and homozygous NORs - 22DAS
+
+### B73xMo17
+
+```{r}
+
+df_sub <- df_DAS22 %>% filter(category %in% c("Mo17", "B73","B73xMo17"))
+
+# Uses the mixed model to adjust for confounding factors experiment
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+ contrast                  estimate    SE df t.ratio p.value
+ heterozygous - homozygous     13.7 0.995 86  13.806  <.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+### B73xb015
+
+```{r}
+
+df_sub <- df_DAS22 %>% filter(category %in% c("b015", "B73","B73xb015"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+ contrast                  estimate  SE df t.ratio p.value
+ homozygous - heterozygous    -8.96 1.3 86  -6.906  <.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+
+### b131xB73
+
+```{r}
+
+df_sub <- df_DAS22 %>% filter(category %in% c("b131", "B73","b131xB73"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+
+ contrast                  estimate   SE df t.ratio p.value
+ homozygous - heterozygous    -9.14 1.09 86  -8.359 <0.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+
+### b172xB73
+
+```{r}
+
+df_sub <- df_DAS22 %>% filter(category %in% c("b172", "B73","b172xB73"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+ contrast                  estimate   SE df t.ratio p.value
+ homozygous - heterozygous    -9.14 1.09 86  -8.359  <.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+
+### B73xb172
+
+```{r}
+
+df_sub <- df_DAS22 %>% filter(category %in% c("b172", "B73","B73xb172"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+ contrast                  estimate    SE  df t.ratio p.value
+ homozygous - heterozygous    -5.96 0.784 116  -7.599  <.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+### m047xMo17
+
+```{r}
+
+df_sub <- df_DAS22 %>% filter(category %in% c("m047", "Mo17","m047xMo17"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height ~ NOR +
+                (1 | experiment),
+              data = df_sub)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+#plot(emm)
+
+```
+
+```
+ contrast                  estimate   SE   df t.ratio p.value
+ homozygous - heterozygous      -14 1.47 72.4  -9.534  <.0001
+
+Degrees-of-freedom method: kenward-roger
+```
+
+
+## Field Data
+
+```{r}
+
+field_data <- read.table("data/phenotyping/data_field_trials.txt", header = T)
+
+field_data$genotype <- factor(field_data$genotype, 
+                              levels = c("B73", "Mo17", "B73xMo17", 
+                                         "b015", "b015xB73", "B73xb015", 
+                                         "b131", "B73xb131", "b131xB73", 
+                                         "b172", "B73xb172", "b172xB73", 
+                                         "m047", "m047xMo17", "Mo17xm047"))
+
+field_data$category <- factor(field_data$category, 
+                              levels = c("B73", "Mo17", "B73xMo17", 
+                                         "b015","b131","b172","m047"))
+
+field_data$WH <- as.factor(field_data$WH)
+field_data$year <- as.factor(field_data$year)
+field_data$NOR <- factor(field_data$NOR, 
+                         levels = c("homozygous","heterozygous"))
+
+saveRDS(field_data, "data/phenotyping/field_data.Rds")
+
+```
+
+
+## Summary Heterosis
+
+```{r}
+
+# Function to calculate MPV
+calculate_heterosis <- function(P1, P2, F1, phenotype, df){
+  index_phenotype <-  which(grepl(phenotype, colnames(df)))
+  MPV = ((mean(unlist(df[df$genotype==P1,][index_phenotype]))+mean(unlist(df[df$genotype==P2,][index_phenotype])))/2)
+  F1 = mean(unlist(df[df$genotype==F1,][index_phenotype]))
+  return((F1-MPV)/MPV)
+}
+
+# Create empty dataframe
+df_MPH = data.frame(matrix(vector(), 9, 3,
+                       dimnames=list(c(), c("hybrid","MPH_grain_yield", 
+                                            "MPH_height_at_flowering")))
+)
+
+
+df_MPH$hybrid <- c("B73xMo17","B73xb015",
+                  "b015xB73","B73xb131",
+                  "b131xB73","B73xb172",
+                  "b172xB73","Mo17xm047",
+                  "m047xMo17")
+
+
+df_MPH$hybrid <- factor(df_MPH$hybrid, levels=c("B73xMo17","B73xb015",
+                                                "b015xB73","B73xb131",
+                                                "b131xB73","B73xb172",
+                                                "b172xB73","Mo17xm047",
+                                                "m047xMo17"), ordered=T)
+
+# Calculate MPV for each hybrid
+
+# Grain yield
+MPH_grain_yield <- list()
+MPH_grain_yield[1] <- calculate_heterosis("B73", "Mo17", "B73xMo17", "grain_yield", field_data)
+MPH_grain_yield[2] <- calculate_heterosis("B73", "b015", "B73xb015", "grain_yield", field_data)
+MPH_grain_yield[3] <- calculate_heterosis("B73", "b015", "b015xB73", "grain_yield", field_data)
+MPH_grain_yield[4] <- calculate_heterosis("B73", "b131", "B73xb131", "grain_yield", field_data)
+MPH_grain_yield[5] <- calculate_heterosis("B73", "b131", "b131xB73", "grain_yield", field_data)
+MPH_grain_yield[6] <- calculate_heterosis("B73", "b172", "B73xb172", "grain_yield", field_data)
+MPH_grain_yield[7] <- calculate_heterosis("B73", "b172", "b172xB73", "grain_yield", field_data)
+MPH_grain_yield[8] <- calculate_heterosis("Mo17", "m047", "Mo17xm047", "grain_yield", field_data)
+MPH_grain_yield[9] <- calculate_heterosis("Mo17", "m047", "m047xMo17", "grain_yield", field_data)
+
+df_MPH$MPH_grain_yield <- unlist(MPH_grain_yield)
+
+# Height at flowering
+MPH_height_at_flowering <- list()
+MPH_height_at_flowering[1] <- calculate_heterosis("B73", "Mo17", "B73xMo17", "height_at_flowering", field_data)
+MPH_height_at_flowering[2] <- calculate_heterosis("B73", "b015", "B73xb015", "height_at_flowering", field_data)
+MPH_height_at_flowering[3] <- calculate_heterosis("B73", "b015", "b015xB73", "height_at_flowering", field_data)
+MPH_height_at_flowering[4] <- calculate_heterosis("B73", "b131", "B73xb131", "height_at_flowering", field_data)
+MPH_height_at_flowering[5] <- calculate_heterosis("B73", "b131", "b131xB73", "height_at_flowering", field_data)
+MPH_height_at_flowering[6] <- calculate_heterosis("B73", "b172", "B73xb172", "height_at_flowering", field_data)
+MPH_height_at_flowering[7] <- calculate_heterosis("B73", "b172", "b172xB73", "height_at_flowering", field_data)
+MPH_height_at_flowering[8] <- calculate_heterosis("Mo17", "m047", "Mo17xm047", "height_at_flowering", field_data)
+MPH_height_at_flowering[9] <- calculate_heterosis("Mo17", "m047", "m047xMo17", "height_at_flowering", field_data)
+
+df_MPH$MPH_height_at_flowering <- unlist(MPH_height_at_flowering)
+
+df_MPH_long <- df_MPH %>% gather(phenotype, MPH, MPH_grain_yield:MPH_height_at_flowering)
+
+df_MPH_long$phenotype <- as.factor(df_MPH_long$phenotype)
+
+
+```
+
+![](images/MPH_all_hybrids.png)
+
+
+
+
+```{r}
+df_MPH_long %>% filter(hybrid!="B73xMo17") %>% group_by(phenotype) %>%  summarize(mean_MPH=mean(MPH), sd=sd(MPH))
+```
+
+0.122
+
+
+```{r}
+
+df_MPH_long %>% filter(phenotype =="MPH_height_at_flowering") %>% arrange(MPH)
+df_MPH_long %>% filter(phenotype =="MPH_grain_yield") %>% arrange(MPH)
+
+
+df_MPH_long %>% filter(hybrid!="B73xMo17" & phenotype =="MPH_height_at_flowering") %>% arrange(MPH)
+df_MPH_long %>% filter(hybrid!="B73xMo17" & phenotype =="MPH_grain_yield") %>% arrange(MPH)
+```
+
+
+```{r}
+df_MPH_long %>% filter(hybrid=="B73xMo17") %>% group_by(phenotype) %>%  summarize(mean_MPH=mean(MPH), sd=sd(MPH))
+```
+
+Top NILs crosses compare to canonical F1
+
+0.12/0.33 => 36% full heterosis
+
+0.67/4.89 => 14%
+
+490% heterosis for grain yield vs 17% for NOR NILs (17/490 = 3.5%)
+
+33% heterosis for plant height vs 7.5% (7.5/33 = 22%)
+
+
+
+
+#### 5S
+
+```{r}
+grep "scaf_43" B73_NAM5_rRNA.gff | cut -f9 | sort | uniq -c
+    299 Name=5S_rRNA;product=5S ribosomal RNA
+      1 Name=5S_rRNA;product=5S ribosomal RNA (partial);note=aligned only 65 percent of the 5S ribosomal RNA
+      1 Name=5S_rRNA;product=5S ribosomal RNA (partial);note=aligned only 75 percent of the 5S ribosomal RNA
+      1 Name=5S_rRNA;product=5S ribosomal RNA (partial);note=aligned only 77 percent of the 5S ribosomal RNA
+
+grep "scaf_290" B73_NAM5_rRNA.gff | cut -f9 | sort | uniq -c
+    189 Name=5S_rRNA;product=5S ribosomal RNA
+      1 Name=5S_rRNA;product=5S ribosomal RNA (partial);note=aligned only 74 percent of the 5S ribosomal RNA
+
+# Number of 5S unitas annotated in scaffolds
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "5S" | cut -f1 | wc -l
+492
+```
+
+#### 45S
+
+There are also rDNA copies annotated on the scaffolds, with two scaffolds (43 and 290 )having a high number of 5S copies (1299 and 189, respectively).
+
+```{bash, eval=FALSE}
+
+
+
+# Number of 28S units annotated in scaffolds
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "28S" | cut -f1 | wc -l
+469
+
+# Number of scaffolds
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "28S" | cut -f1  | sort | uniq | wc -l
+77
+
+```
+
+45S rDNA copies are also present in 
+
+
+
+
+# vcfpy
+
+Note that the software is installed on Python 3.10.14. When I load softwares such as bcftools that load another version of python (3.11.9), I cannot access pyvcf or vcfpy anymore.
+
+```{bash, eval=FALSE}
+# https://vcfpy.readthedocs.io/en/stable/installation.html
+pip install vcfpy --user
+```
+
+```{python, eval=FALSE}
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import vcfpy
+import sys
+
+# Open file, this will read in the header
+reader = vcfpy.Reader.from_path(sys.argv[1])
+
+# Build and print header
+header = ["#CHROM", "POS", "REF", "ALT"] + reader.header.samples.names
+print("\t".join(header))
+
+for record in reader:
+    if not record.is_snv():
+        continue
+    line = [record.CHROM, record.POS, record.REF]
+    line += [alt.value for alt in record.ALT]
+    line += [call.data.get("GT") or "./." for call in record.calls]
+    print("\t".join(map(str, line)))
+    
+```
+
+```{bash, eval=FALSE}
+python vcf_to_tsv.py merged_samples.vcf.gz
+#CHROM  POS     REF     ALT     B73     B73xMo17        B73xb015        B73xb172        Mo17    b015    b131    b131xB73        b172    b172xB73        m047 m047xMo17
+seq_28S 140     A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 177     A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 343     A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 468     A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 547     T       C       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 611     C       T       1/1     0/1     0/1     0/1     ./.     ./.     ./.     0/1     ./.     0/1     1/1     0/1
+seq_28S 780     T       C       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 973     A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 993     A       C       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 1074    A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 1452    A       C       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 1541    T       C       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 1608    A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 1814    A       T       1/1     0/1     0/1     0/1     ./.     ./.     ./.     0/1     ./.     0/1     1/1     0/1
+seq_28S 1872    A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 1916    T       C       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 1965    A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 1970    T       C       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 2079    T       C       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 2995    A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 3280    A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+seq_28S 3305    A       G       1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1     1/1
+
+```
+

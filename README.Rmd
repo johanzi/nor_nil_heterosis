@@ -1,5 +1,5 @@
 ---
-title: "NOR heterozygosity is associated with heterosis in maize"
+title: "Maize nucleolus organizer region is involved in heterosis"
 author: "Johan Zicola"
 date: "`r format(Sys.time())`"
 output:
@@ -24,21 +24,163 @@ knitr::opts_chunk$set(eval = FALSE)
 knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 80), tidy = TRUE)
 ```
 
-
 # Description
 
 This repository contains the bioinformatic analysis of the paper Zicola et al.
 
 
-# NOR characterization
 
-## rRNA copy identification
+# Scripts
+
+## Convert a text list to a R vector
+
+`list_to_rvector.sh`
+
+```{bash, eval=FALSE}
+#!/bin/bash
+
+list_file="$1"
+
+if [[ -z "$list_file" ]]; then
+  echo "Usage: $0 list_file"
+  echo "Convert a list of elements in text file to a R vector"
+  exit 1
+fi
+
+n=$(wc -l < "$list_file")
+
+printf "c("
+while read -r elem; do
+  printf "\"$elem\""
+  n=$((n-1))
+  if ((n > 0)); then
+    printf ","
+  fi
+done < "$list_file"
+printf ")\n"
+
+```
+
+```{bash, eval=FALSE}
+
+cat list.txt
+Zm00001eb262530
+Zm00001eb262540
+Zm00001eb262550
+Zm00001eb262560
+Zm00001eb262570
+Zm00001eb262580
+Zm00001eb262590
+Zm00001eb262600
+Zm00001eb262610
+Zm00001eb262630
+
+bash list_to_rvector.sh list.txt
+
+c("Zm00001eb262530","Zm00001eb262540","Zm00001eb262550","Zm00001eb262560","Zm00001eb262570","Zm00001eb262580","Zm00001eb262590","Zm00001eb262600","Zm00001eb262610","Zm00001eb262630")
+
+```
+
+The output can be copy-pasted in R to easily create a large R vector.
+
+
+
+# B73 and Mo17 NOR characterization
+
+## R libaries
+
+```{r}
+# Plotting packages
+library(tidyverse)
+library(ggpubr)
+
+# Source function for GO analysis (download repo https://github.com/johanzi/GOMAP_maize_B73_NAM5)
+source("P:/git_repositories/GOMAP_maize_B73_NAM5/go_functions.R", chdir = T)
+
+
+# Function to generate GO enrichment plots
+perform_GO <- function(list_genes){
+
+  list_ego_results <- ego_analysis(list_genes)
+  
+  lapply(list_ego_results, function(x) sum(x@result$p.adjust < 0.05))
+  
+  df_ego_analysis <- enrichResult2dataframe(list_ego_results)
+  
+  df_ego_analysis_significant <- df_ego_analysis %>% dplyr::filter(p.adjust < 0.05)
+  
+  p1 <- df_ego_analysis_significant %>% filter(ontology=="BP") %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("BP GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+  
+  p2 <- df_ego_analysis_significant %>% filter(ontology=="MF") %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("MF GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+  
+  p3 <- df_ego_analysis_significant %>% filter(ontology=="CC") %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("CC GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+
+    p4 <- df_ego_analysis_significant %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+  
+  return(list(p1,p2,p3,p4))
+  
+}
+
+```
+
+
+## rDNA subunits annotation
 
 barrnap (v0.9) used in 2026 for annotation in plant https://www.nature.com/articles/s41597-026-07134-1#Abs1q
 
 *NB: Note that the version v1.10.6 does not offer eukaryotic mode (euk) but only fun/arc/bac. I tried it and it misses all 28S subunits and most 5.8S subunits. Do use v0.9 instead (supports eukaryotes).*
-
-### Install barrnap
 
 Website: https://github.com/tseemann/barrnap
 
@@ -67,13 +209,18 @@ Options:
 ```
 
 
-#### B73 NAM5 rDNA annotation
+## B73 NAM5
+
+B73 NAM5 assembly was described in [Hufford et al 2021](https://www.science.org/doi/full/10.1126/science.abg5289) and is based on PacBio long combbined with Illumina short-read data, and scaffolded with Bionano optical maps.
 
 ```{bash, eval=FALSE}
 
 source activate barrnap_v09
 
-cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/rdna_annotation
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/rdna_annotation/B73_NAM5
+
+# Get fasta of B73 NAM5
+wget https://download.maizegdb.org/Zm-B73-REFERENCE-NAM-5.0/Zm-B73-REFERENCE-NAM-5.0.fa.gz
 
 input_fasta="/mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/B73_NAM5/Zm-B73-REFERENCE-NAM-5.0.fa"
 
@@ -112,26 +259,696 @@ grep "18S" B73_NAM5_rRNA.gff | wc -l
 grep "28S" B73_NAM5_rRNA.gff | wc -l
 776
 
+# Without partial alignment
+grep "5S" B73_NAM5_rRNA.gff | grep -v "partial" | wc -l
+701
+
+grep "5.8" B73_NAM5_rRNA.gff | grep -v "partial" | wc -l
+751
+
+grep "18S" B73_NAM5_rRNA.gff | grep -v "partial" | wc -l
+777
+
+grep "28S" B73_NAM5_rRNA.gff | grep -v "partial" | wc -l
+1198
+
 ```
 
+
+
+### NOR coordinates
 
 The gff file `B73_NAM5_rRNA.gff` can be loaded on a Jbrowse running B73 NAM5 genome and the subunits can clearly be seed on chromosome 6:
 
 ![](images/snapshot_JBrowse_barrnap_annotation.png)
+Based on the location of the rDNA subunits, we can define the NOR as located  at chr6:16737500-23875000 so a size of 7,137,500 bp (7.1 Mb).
+
+```{bash, eval=FALSE}
+
+echo -e "chr6\t16737500\t23875000" > NOR.bed
+
+```
+
+
+```{r}
+library(chromoMap)
+
+chr <- c("chr6")
+start <- c("1")
+end <- c("181357234")
+centromere <- c("59037500")
+chromoMap_file <- data.frame(chr, as.integer(start), as.integer(end), as.integer(centromere))
+
+NOR <- data.frame(V1=c("NOR"),
+V2=c("chr6"),
+V3=as.integer(16737500),
+V4=as.integer(23875000),
+V5=c("NOR"))
+
+chromoMap(list(chromoMap_file), list(NOR), segment_annotation = TRUE)
+
+```
+
+![](images/chromomap_NOR_B73_NAM5.png)
+
+Identify number of copies upstream and downstream of RegionA
+
+```{bash, eval=FALSE}
+
+
+# Remove features with partial alignements
+grep -v "partial" B73_NAM5_rRNA.gff > B73_NAM5_rRNA.no_partial.gff
+
+module load gcc bedtools2
+
+echo -e "chr6\t16737500\t17943648" > NOR_upstream_regionA.bed
+
+echo -e "chr6\t20830948\t23875000" > NOR_downstream_regionA.bed
+
+bedtools intersect -a B73_NAM5_rRNA.no_partial.gff -b NOR_upstream_regionA.bed > B73_NAM5_rRNA_NOR_upstream_regionA.gff
+
+bedtools intersect -a B73_NAM5_rRNA.no_partial.gff -b NOR_downstream_regionA.bed > B73_NAM5_rRNA_NOR_downstream_regionA.gff
+
+grep "18S" B73_NAM5_rRNA_NOR_upstream_regionA.gff | wc -l
+89
+
+grep "18S" B73_NAM5_rRNA_NOR_downstream_regionA.gff | wc -l
+138
+
+```
+
+About 89 copies upstream of RegionA and 138 full copies downstream of RegionA
+
+
+### rDNA copies in scaffolds
+
+B73 NAM5 contains 675 scaffolds, sequences that could not be assigned to any of the 10 chromosomes due to their complexity/repetitiveness. These sequences also contain annotated rDNA subunits.
+
+```{bash, eval=FALSE}
+
+samtools faidx Zm-B73-REFERENCE-NAM-5.0.fa
+
+grep "scaf" Zm-B73-REFERENCE-NAM-5.0.fa.fai | wc -l
+675
+
+# Extract scaffold sequences
+seqkit grep -n -r -p "scaf_*" Zm-B73-REFERENCE-NAM-5.0.fa > scaffolds.fa
+
+seqkit stats scaffolds.fa
+file          format  type  num_seqs     sum_len  min_len   avg_len  max_len
+scaffolds.fa  FASTA   DNA        675  50,229,189   30,084  74,413.6  712,123
+
+grep "scaf_" B73_NAM5_rRNA.gff  | wc -l
+1750
+
+grep "scaf_" B73_NAM5_rRNA.gff  | cut -f1 | sort | uniq | wc -l
+85
+
+# Number of scaffolds with 5S
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "5S" | cut -f1 | sort | uniq | wc -l
+2
+
+# Number of copies
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "5S" | wc -l
+492
+
+# Number of scaffolds with 18S, 5.8S, 28S
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "18S" | cut -f1 | sort | uniq | wc -l
+81
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "28S" | cut -f1 | sort | uniq | wc -l
+77
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "5.8S" | cut -f1 | sort | uniq | wc -l
+44
+
+# Number of copies
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "28S" | wc -l
+469
+
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "18S" | wc -l
+423
+
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "5.8S" | wc -l
+366
+```
+
+85/675 scaffolds contain annotated rDNA subunits. Only two contigs contain 5S repeats while others contain either 5.8S, 28S, or 18S subunits.
+
+Scaffolds with higher number of 45S repeats
+
+```{bash, eval=FALSE}
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "18S"  | cut -f1 | sort | uniq -c | sort | tail -n 10
+     10 scaf_174
+     10 scaf_181
+     11 scaf_114
+     11 scaf_126
+     11 scaf_139
+     12 scaf_107
+     13 scaf_88
+     14 scaf_77
+     14 scaf_82
+     18 scaf_48
+
+```
+
+
+If I remove scaffolds containing only partial alignments:
+
+```{bash, eval=FALSE}
+
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "18S"  | grep -v "partial" | cut -f1 | sort | uniq -c  | wc -l
+44
+
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "28S"  | grep -v "partial" | cut -f1 | sort | uniq -c  | wc -l
+44
+
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "5.8S"  | grep -v "partial" | cut -f1 | sort | uniq -c  | wc -l
+44
+
+```
+
+I have 44 scaffolds that seem to contain complete subunit sequences. Assess the size of the contigs containing annotated 45S subunits to define how much of the NOR may be missing on B73 NAM5 chromosome 6
+
+```{bash, eval=FALSE}
+
+grep "scaf_" B73_NAM5_rRNA.gff  | grep "28S" | grep -v "partial" | cut -f1 | sort | uniq > id_scaffold_28S.txt
+
+seqkit grep -n -f /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/rdna_annotation/B73_NAM5/id_scaffold_28S.txt scaffolds.fa > scaffolds_28S.fa
+
+seqkit stats scaffolds_28S.fa
+file              format  type  num_seqs    sum_len  min_len   avg_len  max_len
+scaffolds_28S.fa  FASTA   DNA         44  3,314,854   31,211  75,337.6  159,682
+
+```
+
+The 44 scaffolds containing annotated 28S represent 3.3 Mb while the annotated NOR (including RegionA) is about 7,9 Mb.
+
+
+### A/T polymorphisms
+
+Check how many copies of each types in NOR and scaffolds
+
+>A allele
+CTTGAAAATCCGGAGGACCGAATA
+> T allele
+CTTGAAAATCCGGAGGACCGAATT
+
+
+#### NOR
+
+```{bash, eval=FALSE}
+
+module load gcc bedtools2 bowtie
+
+cd /mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/B73_NAM5/
+
+mkdir NOR
+
+cd NOR
+
+echo -e "chr6\t16737500\t23875000" > NOR.bed
+
+bedtools getfasta -fi ../Zm-B73-REFERENCE-NAM-5.0.fa -bed NOR.bed > NOR.fa
+
+srun -p medium --cpus-per-task=8 --mem=8G --time=01:00:00 bowtie-build \
+  -f NOR.fa NOR_B73_NAM5 &
+
+
+bowtie -x NOR_B73_NAM5 -a -v 0 -c CTTGAAAATCCGGAGGACCGAATA > /dev/null
+# reads processed: 1
+# reads with at least one alignment: 1 (100.00%)
+# reads that failed to align: 0 (0.00%)
+Reported 184 alignments
+
+
+# Map the reads without any mismatch allowed
+bowtie -x NOR_B73_NAM5 -a -v 0 -c CTTGAAAATCCGGAGGACCGAATT > /dev/null
+# reads processed: 1
+# reads with at least one alignment: 1 (100.00%)
+# reads that failed to align: 0 (0.00%)
+Reported 42 alignments
+
+
+
+```
+
+Within the NOR, 42 18S subunits have  184 (81%) have the A allele and 42 (19%) have the T alleles .
+
+
+#### Scaffolds
+
+```{bash, eval=FALSE}
+
+cd /mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/B73_NAM5/scaffolds
+
+module load gcc bowtie samtools
+
+srun -p medium --cpus-per-task=4 --mem=16G --time=02:00:00 bowtie-build \
+  -f scaffolds_28S.fa scaffolds_28S_B73_NAM5 &
+
+# Map the reads without any mismatch allowed
+
+bowtie -x scaffolds_28S_B73_NAM5 -a -v 0 -c CTTGAAAATCCGGAGGACCGAATA > /dev/null
+# reads processed: 1
+# reads with at least one alignment: 1 (100.00%)
+# reads that failed to align: 0 (0.00%)
+Reported 71 alignments
+
+bowtie -x scaffolds_28S_B73_NAM5 -a -v 0 -c CTTGAAAATCCGGAGGACCGAATT > /dev/null
+# reads processed: 1
+# reads with at least one alignment: 1 (100.00%)
+# reads that failed to align: 0 (0.00%)
+Reported 288 alignments
+
+
+```
+
+288 copies with A allele (20%) and 71 with T allele (80%).
+
+
+Concatenate all fasta and re-annotate for visualization
+
+```{bash, eval=FALSE}
+# Concatenate all sequences into one
+grep -v "^>" scaffolds_28S.fa | tr --delete '\n' | fold > scaffolds_28S_concat.fa
+
+# Add fasta header
+sed -i '1 i\>scaffolds_28S' scaffolds_28S_concat.fa
+
+seqkit stats scaffolds_28S_concat.fa
+
+seqkit stats scaffolds_28S_concat.fa
+file                     format  type  num_seqs    sum_len    min_len    avg_len    max_len
+scaffolds_28S_concat.fa  FASTA   DNA          1  3,314,854  3,314,854  3,314,854  3,314,854
+
+source activate barrnap_v09
+
+srun -p medium --cpus-per-task=4 --time=01:00:00 barrnap --threads 4 --kingdom euk --outseq scaffolds_28S_concat_rRNA.fa  < scaffolds_28S_concat.fa > scaffolds_28S_concat_rRNA.gff &
+
+```
+
+## B73 near-T2T (Koren et al 2024)
+
+Near telomere-to-telomere (T2T) assembly of B73 was published in [Koren et al 2024](http://genome.cshlp.org/content/34/11/1919). This assembly is based ONT Duplex data.
+
+```{bash, eval=FALSE}
+
+# Download assembly
+https://obj.umiacs.umd.edu/marbl_publications/duplex/Zea_mays_B73/asm.fasta
+
+mv asm.fasta B73_T2T.fa 
+
+samtools faidx B73_T2T.fa
+
+cut -f1,2 B73_T2T.fa.fai
+chr1    309607410
+chr10   152523392
+chr2    244512530
+chr5    229358312
+chr6    196398069
+chr6_un1        1568390
+chr6_un2        192809
+chr6_un3        254180
+chr6_un4        113172
+chr7    209623059
+chr8    204097842
+chr9    169207087
+chrChrloroplast 141779
+chrMitochondia  569628
+chrrDNA 8794
+chr4    250373149
+chr3_v2 238043907
+
+```
+
+The chr6 is split into 5 files, suggesting the NOR could not be assembled in a single contig.
+
+```{bash, eval=FALSE}
+
+# Annotate rDNA
+source activate barrnap_v09
+
+srun -p scc-cpu --cpus-per-task=8 --time=04:00:00 barrnap --threads 8 --kingdom euk --outseq B73_T2T_rRNA.fa  < B73_T2T.fa > B73_T2T_rRNA.gff
+
+# Remove partially mapping rRNA units
+grep -v "partial" B73_T2T_rRNA.gff > B73_T2T_rRNA.complete.gf
+
+grep "chr6" B73_T2T_rRNA.complete.gff | grep "28S" | wc -l
+451
+
+
+grep "chr6" B73_T2T_rRNA.complete.gff | grep "28S" | cut -f1 | sort | uniq -c
+    209 chr6
+    178 chr6_un1
+     22 chr6_un2
+     29 chr6_un3
+     13 chr6_un4
+
+grep "28S" B73_T2T_rRNA.complete.gff | cut -f1 | sort | uniq -c
+      1 chr10
+    209 chr6
+    178 chr6_un1
+     22 chr6_un2
+     29 chr6_un3
+     13 chr6_un4
+      1 chrrDNA
+
+
+grep "18S" B73_T2T_rRNA.complete.gff | cut -f1 | sort | uniq -c
+      1 chr10
+    206 chr6
+    178 chr6_un1
+     21 chr6_un2
+     28 chr6_un3
+     13 chr6_un4
+      1 chrrDNA
+      
+grep "5.8S" B73_T2T_rRNA.complete.gff | cut -f1 | sort | uniq -c
+      1 chr10
+    221 chr6
+    178 chr6_un1
+     22 chr6_un2
+     29 chr6_un3
+     13 chr6_un4
+      1 chrrDNA
+
+
+# Size of the chr6 scaffolds (chr6_un)
+
+```
+
+The T2T B73 assembly has 451 28S subunits, with 209 annotated on chr6 and the 242 others split into 4 chr6 contigs (chr6_un[1-4]). One subunit is annotated on chr10.
+
+### NOR coordinates
+
+Based on JBrowse visualization of B73_T2T_rRNA.gff on chr6, the NOR is located at chr6:30750000-37600000 (6.85 Mb) and RegionA is located at chr6:31600000-34720000 (3.12 Mb).
+
+```{bash, eval=FALSE}
+
+echo -e "chr6\t30750000\t37600000" > NOR_B73_T2T.bed
+
+echo -e "chr6\t31600000\t34720000" > RegionA_B73_T2T.bed
+
+```
+
+
+```{r}
+library(chromoMap)
+
+chr <- c("chr6")
+start <- c("1")
+end <- c("196398069")
+chromoMap_file <- data.frame(chr, as.integer(start), as.integer(end))
+
+NOR <- data.frame(V1=c("NOR"),
+V2=c("chr6"),
+V3=as.integer(30750000),
+V4=as.integer(37600000),
+V5=c("NOR"))
+
+chromoMap(list(chromoMap_file), list(NOR), segment_annotation = TRUE)
+
+```
+
+![](images/chromomap_NOR_B73_T2T_Koren.png)
+
+### A/T polymorphisms
+
+Check how many copies of each types in NOR and scaffolds
+
+>A allele
+CTTGAAAATCCGGAGGACCGAATA
+> T allele
+CTTGAAAATCCGGAGGACCGAATT
+
+Check A/T polymorphism
+
+```{bash, eval=FALSE}
+
+# Get chr6 and chr6_un contigs
+grep "chr6" B73_T2T_rRNA.complete.gff | grep "28S" | cut -f1 | sort | uniq > name_chr6.txt
+
+seqkit grep -r -n -f name_chr6.txt B73_T2T.fa > B73_T2T_chr6.fa
+
+srun -p scc-cpu --cpus-per-task=8 --mem=8G --time=01:00:00 bowtie-build \
+  -f B73_T2T_chr6.fa B73_T2T_chr6 &
+
+## Allele A
+# Only chr6
+bowtie -x B73_T2T_chr6 -a -v 0 -c CTTGAAAATCCGGAGGACCGAATA | grep -w "chr6" | wc -l
+198
+
+# Only chr6_un[1-4]
+bowtie -x B73_T2T_chr6 -a -v 0 -c CTTGAAAATCCGGAGGACCGAATA | grep "chr6_un" | wc -l
+220
+
+## Allele T
+# Only chr6
+bowtie -x B73_T2T_chr6 -a -v 0 -c CTTGAAAATCCGGAGGACCGAATT | grep -w "chr6" | wc -l
+3
+
+# Only chr6_un[1-4]
+bowtie -x B73_T2T_chr6 -a -v 0 -c CTTGAAAATCCGGAGGACCGAATT | grep "chr6_un" | wc -l
+21
+
+# Using whole genome
+srun -p scc-cpu --cpus-per-task=8 --mem=8G --time=02:00:00 bowtie-build   -f B73_T2T.fa B73_T2T &
+
+bowtie -x B73_T2T -a -v 0 -c CTTGAAAATCCGGAGGACCGAATA > /dev/null
+# reads processed: 1
+# reads with at least one alignment: 1 (100.00%)
+# reads that failed to align: 0 (0.00%)
+Reported 419 alignments
+
+bowtie -x B73_T2T -a -v 0 -c CTTGAAAATCCGGAGGACCGAATT > /dev/null
+# reads processed: 1
+# reads with at least one alignment: 1 (100.00%)
+# reads that failed to align: 0 (0.00%)
+Reported 25 alignments
+
+
+```
+
+For this B73 assembly, we get 418 28S copies with the A allele (95%) and 24 copies with the T allele (5%), which is largely different from the B73 NAM5 assembly (about 50-50).
+
+It is very suspicious that so few copies with the T alleles were found while SNP calling on WGS data seem to indicate a ratio of about 70% A and 30% T ([Liu et al 2017](https://www.nature.com/articles/srep42444)). I don't trust the NOR of this B73 T2T assembly.
+
+
+## Mo17 CAU rDNA annotation
+
+A telomere-to-telomere assembly of Mo17 was released in 2023 with the paper [Chen et al., 2023](https://www.nature.com/articles/s41588-023-01419-6). This assembly is named Zm-Mo17-REFERENCE-CAU-2.0.
+
+
+```{bash, eval=FALSE}
+# Download Mo17 CAU 2 assembly
+wget https://download.maizegdb.org/Zm-Mo17-REFERENCE-CAU-2.0/Zm-Mo17-REFERENCE-CAU-2.0.fa.gz
+
+gunzip Zm-Mo17-REFERENCE-CAU-2.0.fa.gz
+
+source activate barrnap_v09
+
+srun -p medium --cpus-per-task=8 --time=04:00:00 barrnap --threads 8 --kingdom euk --outseq Mo17_CAU_2_rRNA.fa  < Zm-Mo17-REFERENCE-CAU-2.0.fa > Mo17_CAU_2_rRNA.gff
+
+
+wc -l Mo17_CAU_2_rRNA.gff
+10400 Mo17_CAU_2_rRNA.gff
+
+# If partial removed
+grep -v "partial" Mo17_CAU_2_rRNA.gff | wc -l
+10328
+
+# Distribution on the 10 chromosomes
+cut -f1  Mo17_CAU_2_rRNA.gff | grep "chr" | sort | uniq -c
+      5 chr1
+      7 chr10
+   1381 chr2
+      1 chr3
+      3 chr4
+      1 chr5
+   9000 chr6
+      1 chr8
+
+# Number for each type
+grep "5S" Mo17_CAU_2_rRNA.gff | wc -l
+1379
+
+grep "5.8" Mo17_CAU_2_rRNA.gff | wc -l
+3619
+
+grep "18S" Mo17_CAU_2_rRNA.gff | wc -l
+3015
+
+grep "28S" Mo17_CAU_2_rRNA.gff | wc -l
+3021
+
+
+# Without partial alignment
+grep "5S" Mo17_CAU_2_rRNA.gff | grep -v "partial" | wc -l
+1370
+
+grep "5.8S" Mo17_CAU_2_rRNA.gff | grep -v "partial" | wc -l
+2983
+
+grep "18S" Mo17_CAU_2_rRNA.gff | grep -v "partial" | wc -l
+2993
+
+grep "28S" Mo17_CAU_2_rRNA.gff | grep -v "partial" | wc -l
+2981
+
+```
+
+Mo17 CAU 2 has about 3000 45S copies while B73 NAM5 800, so a fold-change of about 4 between the two genotypes.
+
+### NOR coordinates
+
+The gff file `Mo17_CAU_2_rRNA.gff` can be loaded on a Jbrowse running Mo17 CAU genome and the subunits can clearly be seed on chromosome 6:
+
+Coordinates: chr6:17925000-44750000 (26,8 Mb)
+
+```{bash, eval=FALSE}
+echo -e "chr6\t17925000\t44750000" > NOR_Mo17.bed
+
+```
+
+We can see 3 clusters of different positions
+
+```{bash, eval=FALSE}
+
+# Size 8900056
+echo -e "chr6\t17925000\t26825056\tcluster1\t.\t-" > NOR_Mo17_cluster1.bed
+
+# Size 3420719
+echo -e "chr6\t26825056\t30245775\tcluster2\t.\t+" > NOR_Mo17_cluster2.bed
+
+# 14504225
+echo -e "chr6\t30245775\t44750000\tcluster3\t.\t-" > NOR_Mo17_cluster3.bed
+
+cat NOR_Mo17_cluster* > NOR_Mo17_clusters.bed
+```
+
+
+```{r}
+library(chromoMap)
+
+chr <- c("chr6")
+start <- c("1")
+end <- c("201729004")
+centromere <- c("80000000")
+chromoMap_file <- data.frame(chr, as.integer(start), as.integer(end), as.integer(centromere))
+
+NOR <- data.frame(V1=c("NOR"),
+V2=c("chr6"),
+V3=as.integer(17925000),
+V4=as.integer(44750000),
+V5=c("NOR"))
+
+chromoMap(list(chromoMap_file), list(NOR), segment_annotation = TRUE)
+
+```
+
+![](images/chromomap_NOR_Mo17_CAU2.png)
+
+
+### A/T polymorphisms
+
+Check how many copies of each types in NOR and scaffolds
+
+>A allele
+CTTGAAAATCCGGAGGACCGAATA
+> T allele
+CTTGAAAATCCGGAGGACCGAATT
+
+
+```{bash, eval=FALSE}
+
+module load gcc bowtie
+
+srun -p scc-cpu --cpus-per-task=8 --mem=8G --time=02:00:00 bowtie-build \
+  -f Zm-Mo17-REFERENCE-CAU-2.0.fa Mo17_CAU_2 &
+
+bowtie -x Mo17_CAU_2 -a -v 0 -c CTTGAAAATCCGGAGGACCGAATA > /dev/null
+# reads processed: 1
+# reads with at least one alignment: 1 (100.00%)
+# reads that failed to align: 0 (0.00%)
+Reported 2914 alignments
+
+bowtie -x Mo17_CAU_2 -a -v 0 -c CTTGAAAATCCGGAGGACCGAATA | grep "chr6"    bucket 4: 60%
+| wc -l
+# reads processed: 1
+# reads with at least one alignment: 1 (100.00%)
+# reads that failed to align: 0 (0.00%)
+Reported 2914 alignments
+2913
+
+
+bowtie -x Mo17_CAU_2 -a -v 0 -c CTTGAAAATCCGGAGGACCGAATT > /dev/null
+# reads processed: 1
+# reads with at least one alignment: 0 (0.00%)
+# reads that failed to align: 1 (100.00%)
+No alignments
+
+```
+
+
+
+## WGS B73 data for A/T call
+
+```{bash, eval=FALSE}
+
+srun -p ssc-cpu --time=00:20:00 seqkit pair --interleaved -1 R1.fastq -2 R2.fastq SRR447986.fastq
+
+```
+
+
+
+## Genes in the NOR B73 NAM5
+
+```{bash, eval=FALSE}
+
+module load gcc bedtools2 bedops
+
+# Download gene annotation B73 NAM5
+wget https://download.maizegdb.org/Zm-B73-REFERENCE-NAM-5.0/Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.gff3
+
+# Keep only genes
+awk '$3=="gene"' Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.gff3 > Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.gff3
+
+echo -e "chr6\t16737500\t23875000" > NOR.bed
+
+bedtools intersect -a Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.gff3 -b NOR.bed > NOR.gene.gff3
+
+wc -l NOR.gene.gff3
+180 NOR.gene.gff3
+
+# Get gene ID
+cut -f9 NOR.gene.gff3 | cut -d";" -f1 | cut -d"=" -f2 | sort | uniq > NOR.gene.id
+
+# Create a R vector
+bash list_to_rvector.sh NOR.gene.id
+```
+
+```{r}
+
+list_genes_NOR <- c("Zm00001eb261960", "Zm00001eb261970", "Zm00001eb261980", "Zm00001eb261990", "Zm00001eb262000", "Zm00001eb262010", "Zm00001eb262020", "Zm00001eb262030", "Zm00001eb262040", "Zm00001eb262050", "Zm00001eb262060", "Zm00001eb262070", "Zm00001eb262080", "Zm00001eb262090", "Zm00001eb262100", "Zm00001eb262120", "Zm00001eb262130", "Zm00001eb262140", "Zm00001eb262150", "Zm00001eb262160", "Zm00001eb262170", "Zm00001eb262180", "Zm00001eb262190", "Zm00001eb262200", "Zm00001eb262210", "Zm00001eb262220", "Zm00001eb262230", "Zm00001eb262240", "Zm00001eb262250", "Zm00001eb262260", "Zm00001eb262270", "Zm00001eb262280", "Zm00001eb262290", "Zm00001eb262300", "Zm00001eb262310", "Zm00001eb262320", "Zm00001eb262330", "Zm00001eb262340", "Zm00001eb262350", "Zm00001eb262360", "Zm00001eb262370", "Zm00001eb262380", "Zm00001eb262390", "Zm00001eb262400", "Zm00001eb262410", "Zm00001eb262430", "Zm00001eb262440", "Zm00001eb262450", "Zm00001eb262460", "Zm00001eb262520", "Zm00001eb262530", "Zm00001eb262540", "Zm00001eb262550", "Zm00001eb262560", "Zm00001eb262570", "Zm00001eb262580", "Zm00001eb262590", "Zm00001eb262600", "Zm00001eb262610", "Zm00001eb262630", "Zm00001eb262640", "Zm00001eb262650", "Zm00001eb262660", "Zm00001eb262670", "Zm00001eb262680", "Zm00001eb262690", "Zm00001eb262700", "Zm00001eb262710", "Zm00001eb262720", "Zm00001eb262730", "Zm00001eb262740", "Zm00001eb262750", "Zm00001eb262760", "Zm00001eb262770", "Zm00001eb262780", "Zm00001eb262790", "Zm00001eb262800", "Zm00001eb262810", "Zm00001eb262820", "Zm00001eb262840", "Zm00001eb262850", "Zm00001eb262860", "Zm00001eb262880", "Zm00001eb262890", "Zm00001eb262900", "Zm00001eb262910", "Zm00001eb262920", "Zm00001eb262930", "Zm00001eb262950", "Zm00001eb262970", "Zm00001eb262990", "Zm00001eb263000", "Zm00001eb263010", "Zm00001eb263020", "Zm00001eb263030", "Zm00001eb263040", "Zm00001eb263050", "Zm00001eb263060", "Zm00001eb263070", "Zm00001eb263090", "Zm00001eb263100", "Zm00001eb263120", "Zm00001eb263140", "Zm00001eb263150", "Zm00001eb263160", "Zm00001eb263180", "Zm00001eb263190", "Zm00001eb263200", "Zm00001eb263210", "Zm00001eb263220", "Zm00001eb263240", "Zm00001eb263250", "Zm00001eb263270", "Zm00001eb263280", "Zm00001eb263290", "Zm00001eb263300", "Zm00001eb263310", "Zm00001eb263320", "Zm00001eb263340", "Zm00001eb263350", "Zm00001eb263360", "Zm00001eb263370", "Zm00001eb263380", "Zm00001eb263390", "Zm00001eb263410", "Zm00001eb263420", "Zm00001eb263430", "Zm00001eb263440", "Zm00001eb263450", "Zm00001eb263460", "Zm00001eb263470", "Zm00001eb263480", "Zm00001eb263490", "Zm00001eb263500", "Zm00001eb263510", "Zm00001eb263520", "Zm00001eb263530", "Zm00001eb263540", "Zm00001eb263550", "Zm00001eb263570", "Zm00001eb263580", "Zm00001eb263590", "Zm00001eb263610", "Zm00001eb263620", "Zm00001eb263630", "Zm00001eb263640", "Zm00001eb263650", "Zm00001eb263660", "Zm00001eb263670", "Zm00001eb263680", "Zm00001eb263690", "Zm00001eb263700", "Zm00001eb263710", "Zm00001eb263720", "Zm00001eb263730", "Zm00001eb263740", "Zm00001eb263750", "Zm00001eb263760", "Zm00001eb263780", "Zm00001eb263790", "Zm00001eb263800", "Zm00001eb263830", "Zm00001eb263860", "Zm00001eb263880", "Zm00001eb263890", "Zm00001eb263900", "Zm00001eb263910", "Zm00001eb263920", "Zm00001eb263930", "Zm00001eb263940", "Zm00001eb263960", "Zm00001eb263970", "Zm00001eb263980", "Zm00001eb264000", "Zm00001eb264010", "Zm00001eb264020", "Zm00001eb264030", "Zm00001eb264040", "Zm00001eb264050", "Zm00001eb264060")
+
+saveRDS(list_genes_NOR, "data/annotations/list_genes_NOR.Rds")
+
+```
 
 
 
 
-### RegionA analysis
 
-The regionA was described by [Huang et al 2021](https://doi.org/10.1186/s13059-021-02448-2) as a 2.9 Mb presence/absence variation (PAV) that is found in B73 but not in Mo17. regionA can be used for genotyping our NIL material to ensure that the NOR introgression is present.
+
+## RegionA analysis
+
+The RegionA was described by [Huang et al 2021](https://doi.org/10.1186/s13059-021-02448-2) as a 2.9 Mb presence/absence variation (PAV) that is found in B73 but not in Mo17. RegionA can be used for genotyping our NIL material to ensure that the NOR introgression is present.
 
 By visualizing rDNA copies on JBrowse based on barrnap annotation of B73 NAM5 assembly, one can see a gap round chr6:17943647..20830948 with no rDNA subunits annotated.
 
 ```{bash, eval=FALSE}
 
 # NOR coordinates
-echo -e "chr6\t16459135\t24391599" > NOR.bed
+echo -e "chr6\t16737500\t23875000" > NOR.bed
 
 # regionA coordinates
 echo -e "chr6\t17943647\t20830948" > regionA.bed
@@ -145,21 +962,105 @@ Load these three bed files on JBrowse (B73 NAM5 annotation) and the barrnap rDNA
 
 ![](images/snapshot_JBrowse_regionA.png)
 
-We can retrieve the genes present in regionA:
+### Genes present in RegionA
+
+We can retrieve the genes present in RegionA:
 
 ```{bash, eval=FALSE}
 
+module load gcc bedtools2 bedops
 
+cd /mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/B73_NAM5
+
+# Download gene annotation B73 NAM5
+wget https://download.maizegdb.org/Zm-B73-REFERENCE-NAM-5.0/Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.gff3
+
+# Keep only genes
+awk '$3=="gene"' Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.gff3 > Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.gff3
+
+# regionA coordinates
+echo -e "chr6\t17943647\t20830948" > regionA.bed
+
+bedtools intersect -a Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.gff3 -b regionA.bed > regionA.gene.gff3
+
+wc -l regionA.gene.gff3
+56 regionA.gene.gff3
+
+# Get gene ID
+cut -f9 regionA.gene.gff3 | cut -d";" -f1 | cut -d"=" -f2 | sort | uniq > regionA.gene.id
+
+# Create a R vector
+bash list_to_rvector.sh regionA.gene.id
+```
+
+
+```{r}
+# Put in R vector
+list_genes_regionA <- c("Zm00001eb262530", "Zm00001eb262540", "Zm00001eb262550", "Zm00001eb262560", "Zm00001eb262570", "Zm00001eb262580", "Zm00001eb262590", "Zm00001eb262600", "Zm00001eb262610", "Zm00001eb262630", "Zm00001eb262640", "Zm00001eb262650", "Zm00001eb262660", "Zm00001eb262670", "Zm00001eb262680", "Zm00001eb262690", "Zm00001eb262700", "Zm00001eb262710", "Zm00001eb262720", "Zm00001eb262730", "Zm00001eb262740", "Zm00001eb262750", "Zm00001eb262760", "Zm00001eb262770", "Zm00001eb262780", "Zm00001eb262790", "Zm00001eb262800", "Zm00001eb262810", "Zm00001eb262820", "Zm00001eb262840", "Zm00001eb262850", "Zm00001eb262860", "Zm00001eb262880", "Zm00001eb262890", "Zm00001eb262900", "Zm00001eb262910", "Zm00001eb262920", "Zm00001eb262930", "Zm00001eb262950", "Zm00001eb262970", "Zm00001eb262990", "Zm00001eb263000", "Zm00001eb263010", "Zm00001eb263020", "Zm00001eb263030", "Zm00001eb263040", "Zm00001eb263050", "Zm00001eb263060", "Zm00001eb263070", "Zm00001eb263090", "Zm00001eb263100", "Zm00001eb263120", "Zm00001eb263140", "Zm00001eb263150", "Zm00001eb263160", "Zm00001eb263180")
+
+saveRDS(list_genes_regionA, "data/annotations/list_genes_regionA.Rds")
 
 ```
 
 
+### Genes in NOR genes without not in RegionA genes
 
-### Identify rRNA genes in B73 NAM5
+I have 56 genes in RegionA and 182 in the NOR so I should theoretically have 182-56=126 genes that are in the NOR but not RegionA
 
 
+```{r}
+list_genes_regionA <- readRDS("data/annotations/list_genes_regionA.Rds")
+
+list_genes_NOR <- readRDS("data/annotations/list_genes_NOR.Rds")
+
+list_genes_NOR_wo_RegionA <- setdiff(list_genes_NOR, list_genes_regionA)
+
+saveRDS(list_genes_NOR_wo_RegionA, "data/annotations/list_genes_NOR_wo_RegionA.Rds")
+```
 
 
+## GO analysis NOR genes and RegionA
+
+### NOR genes
+
+```{r}
+
+list_genes_NOR <- readRDS("data/annotations/list_genes_NOR.Rds")
+
+lp <- perform_GO(list_genes_NOR)
+
+lp[[4]]
+
+```
+
+![](images/GO_NOR_genes.png)
+
+### RegionA genes
+
+```{r}
+
+list_genes_regionA <- readRDS("data/annotations/list_genes_regionA.Rds")
+
+lp <- perform_GO(list_genes_regionA)
+
+lp[[4]]
+
+```
+
+![](images/GO_NOR_RegionA.png)
+
+### NOR genes w/o RegionA genes
+
+```{r}
+
+list_genes_NOR_wo_RegionA <- readRDS("data/annotations/list_genes_NOR_wo_RegionA.Rds")
+
+lp <- perform_GO(list_genes_NOR_wo_RegionA)
+
+lp[[4]]
+
+```
+![](images/GO_NOR_wo_RegionA.png)
 
 # #######################
 
@@ -195,7 +1096,6 @@ library(styler)
 ```
 
 
-
 ```{r}
 
 df <- read.delim("data/phenotyping/data_phenotyping_growth_chamber.txt", stringsAsFactors = T, dec = ",")
@@ -209,8 +1109,7 @@ long_df$DAS <- as.factor(long_df$DAS)
 # Order DAS
 long_df$DAS <- factor(long_df$DAS, levels = c("DAS4", "DAS7", "DAS10", "DAS13", "DAS16", "DAS19", "DAS22"), ordered = T)
 
-# Order genotype
-long_df$line <- factor(long_df$line, levels = c("B73", "Mo17", "B73xMo17", "b015", "B73xb015", "b131", "b131xB73", "b172", "b172xB73", "B73xb172", "m047", "m047xMo17"), ordered = T)
+long_df$line <- factor(long_df$line, levels = c("B73", "Mo17", "b015", "b131", "b172", "m047", "B73xMo17", "B73xb015", "b131xB73", "B73xb172", "b172xB73", "m047xMo17"), ordered = T)
 
 # Order groups
 long_df$group <- factor(long_df$group, levels = c("B73", "Mo17", "B73xMo17", "B73_NIL", "B73_NIL_cross", "Mo17_NIL", "Mo17_NIL_cross"), ordered = T)
@@ -218,7 +1117,7 @@ long_df$group <- factor(long_df$group, levels = c("B73", "Mo17", "B73xMo17", "B7
 # Order categories
 long_df$category <- factor(long_df$category, levels = c("B73", "Mo17", "B73xMo17", "b015", "b131", "b172", "m047"), ordered = T)
 
-long_df$NOR <- factor(long_df$NOR, levels = c("homozygous","heterozygous"))
+long_df$NOR <- factor(long_df$NOR, levels = c("homozygous", "heterozygous"))
 
 long_df$height <- as.numeric(long_df$height)
 
@@ -226,22 +1125,7 @@ saveRDS(long_df, "data/phenotyping/data_phenotyping_growth_chamber.Rds")
 
 ```
 
-## Plant height across time points
-
-```{r}
-df <- readRDS("data/phenotyping/data_phenotyping_growth_chamber.Rds")
-
-df %>% ggbarplot("DAS", "height", fill = "line", color = "line", 
-                 position = position_dodge(0.9), add = "mean_se") + 
-  ylab("Plant height in cm") + xlab("Days after sowing") + 
-  ggtitle("Plant height") + 
-  theme(plot.title = element_text(hjust = 0.5))
-
-```
-
-![](images/overview_timepoints_growth_chamber.png)
-
-## Summary at 13 DAS
+## Summary 13 DAS
 
 ```{r}
 df <- readRDS("data/phenotyping/data_phenotyping_growth_chamber.Rds")
@@ -250,51 +1134,54 @@ df_DAS13 <- df %>% filter(DAS=="DAS13")
 
 MPV <- (mean(df_DAS13[df_DAS13$line=="B73", ]$height) + mean(df_DAS13[df_DAS13$line=="Mo17", ]$height))/2
 
+col <- c("#d95f02", "#1b9e77")
 
-F1 <- mean(df_DAS13[df_DAS13$line=="B73xMo17", ]$height)
-
-MPH <- ((F1-MPV)/MPV)
-
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
-
-ggboxplot(df_DAS13, x="line", y="height",color="category",
-          ylab="Height in cm", xlab="Genotype", add="dotplot", 
-          palette=col, add.params = list(size = 1, alpha = 0.2), outlier.shape = NA) + 
-      theme(axis.text.x = element_text(angle=45, hjust=1)) +  
-      ggtitle("Height at 13 DAS")+  theme(plot.title = element_text(hjust = 0.5)) + 
-      geom_hline(yintercept=MPV, linetype="dashed", color = "black")  + expand_limits(y = 0)
+ggboxplot(df_DAS13,
+  x = "line", y = "height", color = "NOR",
+  ylab = "Plant height (cm)", xlab = "Genotype", add = "dotplot",
+  palette = col, add.params = list(size = 0.8, alpha = 0.2), outlier.shape = NA
+) + theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Plant height at 13 DAS") + theme(plot.title = element_text(hjust = 0.5)) +
+  geom_hline(yintercept = MPV, linetype = "dashed", color = "black") + expand_limits(y = 0) +  theme(axis.text.x = element_text(color="black"), 
+      axis.text.y = element_text(color="black"),
+      axis.ticks = element_line(color = "black")) + 
+      theme(plot.title = element_text(hjust = 0.5)) + 
+      scale_y_continuous(labels = scales::comma_format())
 
 ```
 
 ![](images/plant_height_DAS13.png)
-### Cluster by heterozygosity
+
+### By experiment
 
 ```{r}
 
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
+df <- readRDS("data/phenotyping/data_phenotyping_growth_chamber.Rds")
 
-df_DAS13$category <- factor(df_DAS13$category, 
-                            levels = c("B73", "Mo17","B73xMo17", "b015","b131","b172","m047"))
+df_DAS13 <- df %>% filter(DAS=="DAS13")
 
+col <- c("#1b9e77", "#d95f02", "#7570b3")
 
-df_DAS13 %>% ggboxplot(
-  x = "NOR", y = "height", ylab = "Plant height (cm)", 
-  xlab = "NOR", color = "category", add = "dotplot", palette = col, add.params = list(size = 0.5, alpha = 0.2), outlier.shape = NA
-) + theme_bw() + expand_limits(y = 0) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  ggtitle("Plant height 13 days after sowing") + theme(plot.title = element_text(hjust = 0.5)) +
-  geom_hline(yintercept = MPV, linetype = "dashed", color = "black") + theme(
+MPV <- (mean(df_DAS13[df_DAS13$line=="B73", ]$height) + mean(df_DAS13[df_DAS13$line=="Mo17", ]$height))/2
+
+ggboxplot(df_DAS13, "line", "height",
+  color = "experiment", add = "dotplot",
+  xlab = "genotype", ylab = "Plant height in cm", title = "Plant height 13 days after sowing across the 3 experiments",
+  palette = col,
+  add.params = list(size = 0.7, alpha = 0.2), outlier.shape = NA
+) + theme_bw() +
+  rotate_x_text(45) + expand_limits(y = 0) + theme(
     axis.text.x = element_text(color = "black"),
     axis.text.y = element_text(color = "black"),
     axis.ticks = element_line(color = "black")
-  ) +
+  ) + geom_hline(yintercept = MPV, linetype = "dashed", color = "black") +
   theme(plot.title = element_text(hjust = 0.5)) +
- scale_y_continuous(labels = scales::comma_format())
-
-
+  scale_y_continuous(labels = scales::comma_format())
 ```
 
-![](images/plant_height_DAS13_NOR.png)
+![](images/plant_height_DAS13_by_experiment.png)
+
 
 ### Comparison heterozygous and homozygous NORs - 13DAS
 
@@ -473,270 +1360,11 @@ pairs(emm)
 Degrees-of-freedom method: kenward-roger 
 ```
 
-
-
-
-## Summary at 22 DAS
-
-### Overview
-
-```{r}
-df <- readRDS("data/phenotyping/data_phenotyping_growth_chamber.Rds")
-
-df_DAS22 <- df %>% filter(DAS=="DAS22")
-
-MPV <- (mean(df_DAS22[df_DAS22$line=="B73", ]$height) + 
-          mean(df_DAS22[df_DAS22$line=="Mo17", ]$height))/2
-
-F1 <- mean(df_DAS22[df_DAS22$line=="B73xMo17", ]$height)
-
-MPH <- ((F1-MPV)/MPV)
-
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
-
-ggdotplot(df_DAS22, "line", "height", color="category", add="boxplot", palette=col, 
-          add.params = list(size = 1, alpha = 0.2), ylab="Height in cm") + 
-  rotate_x_text(45) + 
-  geom_hline(yintercept=MPV, linetype="dashed", color = "black")
-
-
-ggboxplot(df_DAS22, x="line", y="height", color="category", 
-          ylab="Height in cm", xlab="Genotype", add="dotplot", 
-          palette=col, add.params = list(size = 0.7, alpha = 0.2), outlier.shape = NA) + 
-      theme(axis.text.x = element_text(angle=45, hjust=1)) +  
-      ggtitle("Height at 22 DAS")+  theme(plot.title = element_text(hjust = 0.5)) + 
-      geom_hline(yintercept=MPV, linetype="dashed", color = "black") + expand_limits(y = 0)
-
-```
-
-![](images/plant_height_DAS22.png)
-
-### By experiment
-
-```{r}
-col=c("#1b9e77","#d95f02","#7570b3")
-
-ggboxplot(df_DAS22, "line", "height", color = "experiment", add="dotplot", 
-          xlab="genotype", ylab="Plant height in cm", title="Plant height at 22 DAS across the 3 experiments",
-          palette=col, 
-          add.params = list(size = 0.7, alpha = 0.2), outlier.shape = NA) + theme_bw() +
-  rotate_x_text(45) + expand_limits(y = 0) +  theme(axis.text.x = element_text(color="black"), 
-      axis.text.y = element_text(color="black"),
-      axis.ticks = element_line(color = "black")) + 
-      theme(plot.title = element_text(hjust = 0.5)) + 
-      scale_y_continuous(labels = scales::comma_format())
-```
-
-![](images/plant_height_DAS22_by_experiment.png)
-
-The replicated experiments are consistent across genotypes.
-
-### Cluster by heterozygosity
-
-```{r}
-
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
-
-df_DAS22$category <- factor(df_DAS22$category, 
-                            levels = c("B73", "Mo17","B73xMo17", "b015","b131","b172","m047"))
-
-
-df_DAS22 %>% ggboxplot(
-  x = "NOR", y = "height", ylab = "Plant height (cm)", 
-  xlab = "NOR", color = "category", add = "dotplot", palette = col, add.params = list(size = 0.5, alpha = 0.2), outlier.shape = NA
-) + theme_bw() + expand_limits(y = 0) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  ggtitle("Plant height 22 days after sowing") + theme(plot.title = element_text(hjust = 0.5)) +
-  geom_hline(yintercept = MPV, linetype = "dashed", color = "black") + theme(
-    axis.text.x = element_text(color = "black"),
-    axis.text.y = element_text(color = "black"),
-    axis.ticks = element_line(color = "black")
-  ) +
-  theme(plot.title = element_text(hjust = 0.5)) +
- scale_y_continuous(labels = scales::comma_format())
-
-
-```
-
-![](images/plant_height_DAS22_NOR.png)
-
-## Comparison heterozygous and homozygous NORs - 22DAS
-
-### B73xMo17
-
-```{r}
-
-df_sub <- df_DAS22 %>% filter(category %in% c("Mo17", "B73","B73xMo17"))
-
-# Uses the mixed model to adjust for confounding factors experiment
-model <- lmer(height ~ NOR +
-                (1 | experiment),
-              data = df_sub)
-
-# Compares genotype means on an equal footing
-emm  <- emmeans(model, ~ NOR)
-
- # P-value
-pairs(emm)
-
-#plot(emm)
-
-```
-
-```
- contrast                  estimate    SE df t.ratio p.value
- heterozygous - homozygous     13.7 0.995 86  13.806  <.0001
-
-Degrees-of-freedom method: kenward-roger 
-```
-
-### B73xb015
-
-```{r}
-
-df_sub <- df_DAS22 %>% filter(category %in% c("b015", "B73","B73xb015"))
-
-# Uses the mixed model to adjust for confounding factors (year, block)
-model <- lmer(height ~ NOR +
-                (1 | experiment),
-              data = df_sub)
-
-# Compares genotype means on an equal footing
-# Uses appropriate standard errors that reflect your field design
-emm  <- emmeans(model, ~ NOR)
-
- # P-value
-pairs(emm)
-
-#plot(emm)
-
-```
-
-```
- contrast                  estimate  SE df t.ratio p.value
- homozygous - heterozygous    -8.96 1.3 86  -6.906  <.0001
-
-Degrees-of-freedom method: kenward-roger 
-```
-
-
-### b131xB73
-
-```{r}
-
-df_sub <- df_DAS22 %>% filter(category %in% c("b131", "B73","b131xB73"))
-
-# Uses the mixed model to adjust for confounding factors (year, block)
-model <- lmer(height ~ NOR +
-                (1 | experiment),
-              data = df_sub)
-
-# Compares genotype means on an equal footing
-# Uses appropriate standard errors that reflect your field design
-emm  <- emmeans(model, ~ NOR)
-
- # P-value
-pairs(emm)
-
-#plot(emm)
-
-```
-
-### b172xB73
-
-```{r}
-
-df_sub <- df_DAS22 %>% filter(category %in% c("b172", "B73","b172xB73"))
-
-# Uses the mixed model to adjust for confounding factors (year, block)
-model <- lmer(height ~ NOR +
-                (1 | experiment),
-              data = df_sub)
-
-# Compares genotype means on an equal footing
-# Uses appropriate standard errors that reflect your field design
-emm  <- emmeans(model, ~ NOR)
-
- # P-value
-pairs(emm)
-
-#plot(emm)
-
-```
-
-```
- contrast                  estimate   SE df t.ratio p.value
- homozygous - heterozygous    -9.14 1.09 86  -8.359  <.0001
-
-Degrees-of-freedom method: kenward-roger 
-```
-
-
-### B73xb172
-
-```{r}
-
-df_sub <- df_DAS22 %>% filter(category %in% c("b172", "B73","B73xb172"))
-
-# Uses the mixed model to adjust for confounding factors (year, block)
-model <- lmer(height ~ NOR +
-                (1 | experiment),
-              data = df_sub)
-
-# Compares genotype means on an equal footing
-# Uses appropriate standard errors that reflect your field design
-emm  <- emmeans(model, ~ NOR)
-
- # P-value
-pairs(emm)
-
-#plot(emm)
-
-```
-
-```
- contrast                  estimate    SE  df t.ratio p.value
- homozygous - heterozygous    -5.96 0.784 116  -7.599  <.0001
-
-Degrees-of-freedom method: kenward-roger 
-```
-
-### m047xMo17
-
-```{r}
-
-df_sub <- df_DAS22 %>% filter(category %in% c("m047", "Mo17","m047xMo17"))
-
-# Uses the mixed model to adjust for confounding factors (year, block)
-model <- lmer(height ~ NOR +
-                (1 | experiment),
-              data = df_sub)
-
-# Compares genotype means on an equal footing
-# Uses appropriate standard errors that reflect your field design
-emm  <- emmeans(model, ~ NOR)
-
- # P-value
-pairs(emm)
-
-#plot(emm)
-
-```
-
-```
- contrast                  estimate   SE   df t.ratio p.value
- homozygous - heterozygous      -14 1.47 72.4  -9.534  <.0001
-
-Degrees-of-freedom method: kenward-roger
-```
-
-
 ## Summary Heterosis
 
-
 ```{r}
 
-df_DAS22 <- df %>% filter(DAS=="DAS22")
+df_DAS13 <- df %>% filter(DAS=="DAS13")
 
 # Function to calculate MPV
 calculate_heterosis <- function(P1, P2, F1, phenotype, df){
@@ -767,15 +1395,14 @@ df_MPH$hybrid <- factor(df_MPH$hybrid, levels=c("B73xMo17",
 
 # Calculate MPV for each hybrid
 MPH_height <- list()
-MPH_height[1] <- calculate_heterosis("B73", "Mo17", "B73xMo17", "height", df_DAS22)
-MPH_height[2] <- calculate_heterosis("B73", "b015", "B73xb015", "height", df_DAS22)
-MPH_height[3] <- calculate_heterosis("B73", "b131", "b131xB73", "height", df_DAS22)
-MPH_height[4] <- calculate_heterosis("B73", "b172", "B73xb172", "height", df_DAS22)
-MPH_height[5] <- calculate_heterosis("B73", "b172", "b172xB73", "height", df_DAS22)
-MPH_height[6] <- calculate_heterosis("Mo17", "m047", "m047xMo17", "height", df_DAS22)
+MPH_height[1] <- calculate_heterosis("B73", "Mo17", "B73xMo17", "height", df_DAS13)
+MPH_height[2] <- calculate_heterosis("B73", "b015", "B73xb015", "height", df_DAS13)
+MPH_height[3] <- calculate_heterosis("B73", "b131", "b131xB73", "height", df_DAS13)
+MPH_height[4] <- calculate_heterosis("B73", "b172", "B73xb172", "height", df_DAS13)
+MPH_height[5] <- calculate_heterosis("B73", "b172", "b172xB73", "height", df_DAS13)
+MPH_height[6] <- calculate_heterosis("Mo17", "m047", "m047xMo17", "height", df_DAS13)
 
 df_MPH$MPH_height <- unlist(MPH_height)
-
 
 ggbarplot(df_MPH,
   x = "hybrid", y = "MPH_height",
@@ -783,7 +1410,7 @@ ggbarplot(df_MPH,
   color="#B3B3B3",
   position = position_dodge(0.9),
   ylab = "Mid-parent heterosis (%)",
-  xlab = "Hybrid", title = "Mid-parent heterosis for plant height at 22 DAS"
+  xlab = "Hybrid", title = "Mid-parent heterosis for plant height at 13 DAS"
 ) +
   theme_bw() +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
@@ -797,16 +1424,20 @@ ggbarplot(df_MPH,
 
 ```
 
-![](images/MPH_plant_height_22DAS.png)
+![](images/MPH_plant_height_13DAS.png)
 
 ```{r}
-
-df_MPH_long <- df_MPH %>% gather(phenotype, MPH, MPH_grain_yield:MPH_height_at_flowering)
-
-df_MPH_long$phenotype <- as.factor(df_MPH_long$phenotype)
-
-df_MPH  %>% arrange(MPH)
+df_MPH
 ```
+
+| hybrid    | MPH_height |
+|-----------|------------|
+| B73xMo17  | 0.4149517  |
+| B73xb015  | 0.1652996  |
+| b131xB73  | 0.2206311  |
+| B73xb172  | 0.2023992  |
+| b172xB73  | 0.0853785  |
+| m047xMo17 | 0.4570060  |
 
 
 # Phenotypic analysis field trials
@@ -860,11 +1491,11 @@ library(styler)
 field_data <- read.table("data/phenotyping/data_field_trials.txt", header = T)
 
 field_data$genotype <- factor(field_data$genotype, 
-                              levels = c("B73", "Mo17", "B73xMo17", 
-                                         "b015", "b015xB73", "B73xb015", 
-                                         "b131", "B73xb131", "b131xB73", 
-                                         "b172", "B73xb172", "b172xB73", 
-                                         "m047", "m047xMo17", "Mo17xm047"))
+                              levels = c("B73", "Mo17", "b015", "b131", "b172",
+                                         "m047","B73xMo17", "B73xb015", "b015xB73", 
+                                         "B73xb131", "b131xB73", "B73xb172",
+                                         "b172xB73", "Mo17xm047","m047xMo17"))
+
 
 field_data$category <- factor(field_data$category, 
                               levels = c("B73", "Mo17", "B73xMo17", 
@@ -881,17 +1512,53 @@ saveRDS(field_data, "data/phenotyping/field_data.Rds")
 
 ## Plant height at flowering
 
+### Summary by genotype
+
+```{r}
+
+field_data <- readRDS("data/phenotyping/field_data.Rds")
+
+MPV <- (mean(field_data[field_data$genotype=="B73",]$height_at_flowering) + mean(field_data[field_data$genotype=="Mo17",]$height_at_flowering))/2
+
+# Color coding
+col <- c("#d95f02", "#1b9e77")
+
+field_data %>% ggboxplot(
+  x = "genotype", y = "height_at_flowering",
+  color = "NOR", ylab = "Plant height at flowering (cm)",
+  xlab = "Genotype", add = "dotplot", palette = col,
+  add.params = list(size = 0.7, alpha = 0.2), outlier.shape = NA
+) + theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Plant height at flowering") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_hline(yintercept = MPV, linetype = "dashed", color = "black") + theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format()) + expand_limits(y = 0)
+
+
+```
+
+![](images/plant_height_at_flowering.png)
+
+
 ### By year
 
 ```{r}
 col=c("#1b9e77","#d95f02","#7570b3")
+
+MPV <- (mean(field_data[field_data$genotype=="B73",]$height_at_flowering) + mean(field_data[field_data$genotype=="Mo17",]$height_at_flowering))/2
 
 ggboxplot(field_data, "genotype", "height_at_flowering",
   color = "year", add = "dotplot",
   xlab = "genotype", ylab = "Plant height (cm)", title = "Plant height at flowering across 3 years",
   palette = col,
   add.params = list(size = 0.7, alpha = 0.2), outlier.shape = NA
-) + theme_bw() + 
+) + theme_bw() + geom_hline(yintercept = MPV, linetype = "dashed", color = "black") +
   rotate_x_text(45) + theme(plot.title = element_text(hjust = 0.5)) +  theme(axis.text.x = element_text(color="black"), 
       axis.text.y = element_text(color="black"),
       axis.ticks = element_line(color = "black")) + 
@@ -914,10 +1581,10 @@ field_data_sub <- field_data %>% filter(year=="2022")
 MPV <- (mean(field_data_sub[field_data_sub$genotype=="B73",]$height_at_flowering) + mean(field_data_sub[field_data_sub$genotype=="Mo17",]$height_at_flowering))/2
 
 # Color coding
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00B6EB", "#A58AFF")
+col <- c("#d95f02", "#1b9e77")
 
 field_data_sub %>% ggboxplot(x = "genotype", y = "height_at_flowering", 
-                         color = "category", ylab = "Height at flowering (cm)", 
+                         color = "NOR", ylab = "Height at flowering (cm)", 
                          xlab = "Genotype", add = "dotplot", palette = col,
                          add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
@@ -946,12 +1613,10 @@ field_data_sub <- field_data %>% filter(year=="2024")
 MPV <- (mean(field_data_sub[field_data_sub$genotype=="B73",]$height_at_flowering) + mean(field_data_sub[field_data_sub$genotype=="Mo17",]$height_at_flowering))/2
 
 # Color coding
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
-
-
+col <- c("#d95f02", "#1b9e77")
 
 field_data_sub %>% ggboxplot(x = "genotype", y = "height_at_flowering", 
-                         color = "category", ylab = "Height at flowering (cm)", 
+                         color = "NOR", ylab = "Height at flowering (cm)", 
                          xlab = "Genotype", add = "dotplot", palette = col,
                          add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
@@ -963,13 +1628,16 @@ field_data_sub %>% ggboxplot(x = "genotype", y = "height_at_flowering",
       theme(plot.title = element_text(hjust = 0.5)) + 
       scale_y_continuous(labels = scales::comma_format()) + expand_limits(y = 0)
 
+
 ```
+
 
 ![](images/plant_height_at_flowering_2024.png)
 
 #### 2025
 
 ```{r}
+
 
 field_data <- readRDS("data/phenotyping/field_data.Rds")
 
@@ -979,10 +1647,10 @@ field_data_sub <- field_data %>% filter(year=="2025")
 MPV <- (mean(field_data_sub[field_data_sub$genotype=="B73",]$height_at_flowering) + mean(field_data_sub[field_data_sub$genotype=="Mo17",]$height_at_flowering))/2
 
 # Color coding
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
+col <- c("#d95f02", "#1b9e77")
 
 field_data_sub %>% ggboxplot(x = "genotype", y = "height_at_flowering", 
-                         color = "category", ylab = "Height at flowering (cm)", 
+                         color = "NOR", ylab = "Height at flowering (cm)", 
                          xlab = "Genotype", add = "dotplot", palette = col,
                          add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
@@ -994,71 +1662,14 @@ field_data_sub %>% ggboxplot(x = "genotype", y = "height_at_flowering",
       theme(plot.title = element_text(hjust = 0.5)) + 
       scale_y_continuous(labels = scales::comma_format()) + expand_limits(y = 0)
 
+
 ```
 
 
 ![](images/plant_height_at_flowering_2025.png)
 
 
-### Summary by genotype
 
-
-```{r}
-
-field_data <- readRDS("data/phenotyping/field_data.Rds")
-
-MPV <- (mean(field_data[field_data$genotype=="B73",]$height_at_flowering) + mean(field_data[field_data$genotype=="Mo17",]$height_at_flowering))/2
-
-# Color coding
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
-
-field_data %>% ggboxplot(x = "genotype", y = "height_at_flowering", 
-                         color = "category", ylab = "Height at flowering (cm)", 
-                         xlab = "Genotype", add = "dotplot", palette = col,
-                         add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
-  ggtitle("Height at flowering (cm)") + 
-  theme(plot.title = element_text(hjust = 0.5)) + 
-  geom_hline(yintercept = MPV, linetype = "dashed", color = "black")+  theme(axis.text.x = element_text(color="black"), 
-      axis.text.y = element_text(color="black"),
-      axis.ticks = element_line(color = "black")) + 
-      theme(plot.title = element_text(hjust = 0.5)) + 
-      scale_y_continuous(labels = scales::comma_format()) + expand_limits(y = 0)
-
-
-```
-
-![](images/plant_height_at_flowering.png)
-
-### Summary by NOR
-
-```{r}
-
-field_data <- readRDS("data/phenotyping/field_data.Rds")
-
-MPV <- (mean(field_data[field_data$genotype=="B73",]$height_at_flowering) + mean(field_data[field_data$genotype=="Mo17",]$height_at_flowering))/2
-
-# Color coding with F1
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
-
-field_data %>% ggboxplot(x = "NOR", y = "height_at_flowering", 
-                 ylab = "Height at flowering (cm)", 
-                 xlab = "NOR", color="category", 
-                 add = "dotplot", palette=col, 
-                 add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
-  ggtitle("Height at flowering") + 
-  theme(plot.title = element_text(hjust = 0.5)) + 
-  geom_hline(yintercept = MPV, linetype = "dashed", color = "black")+  theme(axis.text.x = element_text(color="black"), 
-      axis.text.y = element_text(color="black"),
-      axis.ticks = element_line(color = "black")) + 
-      theme(plot.title = element_text(hjust = 0.5)) + 
-      scale_y_continuous(labels = scales::comma_format()) + ylim(0,300)
-
-
-```
-
-![](images/plant_height_at_flowering_NOR.png)
 
 
 ### B73xMo17
@@ -1089,11 +1700,11 @@ Degrees-of-freedom method: kenward-roger
 ```
 
 
-### b015
+  ### B73xb015
 
 ```{r}
 # Subset full dataset
-df <- field_data %>% filter(category %in% c("b015", "B73"))
+df <- field_data %>% filter(genotype %in% c("b015", "B73","B73xb015"))
 
 # Uses the mixed model to adjust for confounding factors (year)
 model <- lmer(height_at_flowering ~ NOR +
@@ -1110,23 +1721,25 @@ pairs(emm)
 
 ```
  contrast                  estimate   SE   df t.ratio p.value
- homozygous - heterozygous    -9.35 4.45 50.8  -2.104  0.0404
+ homozygous - heterozygous    -6.85 4.79 38.4  -1.430  0.1609
 
 Degrees-of-freedom method: kenward-roger 
 ```
 
-### b131
+
+
+### B73xb015
 
 ```{r}
-df <- field_data %>% filter(category %in% c("b131", "B73"))
+# Subset full dataset
+df <- field_data %>% filter(genotype %in% c("b015", "B73","B73xb015"))
 
-# Uses the mixed model to adjust for confounding factors (year, block)
+# Uses the mixed model to adjust for confounding factors (year)
 model <- lmer(height_at_flowering ~ NOR +
                 (1 | year),
               data = df)
 
 # Compares genotype means on an equal footing
-# Uses appropriate standard errors that reflect your field design
 emm  <- emmeans(model, ~ NOR)
 
  # P-value
@@ -1136,15 +1749,42 @@ pairs(emm)
 
 ```
  contrast                  estimate   SE   df t.ratio p.value
- homozygous - heterozygous      -10 3.28 55.2  -3.055  0.0035
+ homozygous - heterozygous    -6.85 4.79 38.4  -1.430  0.1609
 
 Degrees-of-freedom method: kenward-roger 
 ```
 
-### b172
+### b015xB73
 
 ```{r}
-df <- field_data %>% filter(category %in% c("b172", "B73"))
+# Subset full dataset
+df <- field_data %>% filter(genotype %in% c("b015", "B73","b015xB73"))
+
+# Uses the mixed model to adjust for confounding factors (year)
+model <- lmer(height_at_flowering ~ NOR +
+                (1 | year),
+              data = df)
+
+# Compares genotype means on an equal footing
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+```
+
+```
+ contrast                  estimate   SE   df t.ratio p.value
+ homozygous - heterozygous    -11.9 5.86 38.5  -2.030  0.0493
+
+Degrees-of-freedom method: kenward-roger
+```
+
+
+### B73xb131
+
+```{r}
+df <- field_data %>% filter(genotype %in% c("b131", "B73","B73xb131"))
 
 # Uses the mixed model to adjust for confounding factors (year, block)
 model <- lmer(height_at_flowering ~ NOR +
@@ -1162,15 +1802,93 @@ pairs(emm)
 
 ```
  contrast                  estimate   SE df t.ratio p.value
- homozygous - heterozygous    -21.3 2.96 68  -7.192  <.0001
+ homozygous - heterozygous    -10.1 4.57 44  -2.202  0.0330
 
 Degrees-of-freedom method: kenward-roger 
 ```
 
-### m047
+### b131xB73
 
 ```{r}
-df <- field_data %>% filter(category %in% c("m047", "Mo17"))
+df <- field_data %>% filter(genotype %in% c("b131", "B73","b131xB73"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height_at_flowering ~ NOR +
+                (1 | year),
+              data = df)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+```
+
+```
+ contrast                  estimate   SE df t.ratio p.value
+ homozygous - heterozygous    -10.8 4.63 44  -2.335  0.0242
+
+Degrees-of-freedom method: kenward-roger
+```
+
+### B73xb172
+
+```{r}
+df <- field_data %>% filter(genotype %in% c("b172", "B73","B73xb172"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height_at_flowering ~ NOR +
+                (1 | year),
+              data = df)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+```
+
+```
+ contrast                  estimate   SE df t.ratio p.value
+ homozygous - heterozygous      -21 3.68 51  -5.724 <0.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+### b172xB73
+
+```{r}
+df <- field_data %>% filter(genotype %in% c("b172", "B73","b172xB73"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height_at_flowering ~ NOR +
+                (1 | year),
+              data = df)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+```
+
+```
+ contrast                  estimate   SE df t.ratio p.value
+ homozygous - heterozygous    -21.6 3.52 49  -6.117 <0.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+### Mo17xm047
+
+```{r}
+df <- field_data %>% filter(genotype %in% c("m047", "Mo17","Mo17xm047"))
 
 # Uses the mixed model to adjust for confounding factors (year, block)
 model <- lmer(height_at_flowering ~ NOR +
@@ -1186,32 +1904,139 @@ pairs(emm)
 ```
 
 ```
- contrast                  estimate   SE   df t.ratio p.value
- homozygous - heterozygous     -7.3 3.93 61.4  -1.855  0.0684
+ contrast                  estimate   SE df t.ratio p.value
+ homozygous - heterozygous    -3.95 5.56 44  -0.710  0.4812
 
-Degrees-of-freedom method: kenward-roger
+Degrees-of-freedom method: kenward-roger 
 ```
 
+### m047xMo17
+
+```{r}
+df <- field_data %>% filter(genotype %in% c("m047", "Mo17","m047xMo17"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(height_at_flowering ~ NOR +
+                (1 | year),
+              data = df)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+```
+
+```
+ contrast                  estimate   SE df t.ratio p.value
+ homozygous - heterozygous    -9.77 4.61 49  -2.120  0.0391
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+
+### Heterosis plant height at flowering
+
+
+```{r}
+# Function to calculate MPV
+calculate_heterosis <- function(P1, P2, F1, phenotype, df){
+  index_phenotype <-  which(grepl(phenotype, colnames(df)))
+  MPV = ((mean(unlist(df[df$genotype==P1,][index_phenotype]))+mean(unlist(df[df$genotype==P2,][index_phenotype])))/2)
+  F1 = mean(unlist(df[df$genotype==F1,][index_phenotype]))
+  return((F1-MPV)/MPV)
+}
+
+# Create empty dataframe
+df_MPH = data.frame(matrix(vector(), 9, 2,
+                       dimnames=list(c(), c("hybrid", "MPH_height_at_flowering")))
+)
+
+
+df_MPH$hybrid <- c("B73xMo17","B73xb015",
+                  "b015xB73","B73xb131",
+                  "b131xB73","B73xb172",
+                  "b172xB73","Mo17xm047",
+                  "m047xMo17")
+
+df_MPH$hybrid <- factor(df_MPH$hybrid, levels=c("B73xMo17","B73xb015",
+                                                "b015xB73","B73xb131",
+                                                "b131xB73","B73xb172",
+                                                "b172xB73","Mo17xm047",
+                                                "m047xMo17"), ordered=T)
+
+# Calculate MPV for each hybrid
+
+# Grain yield
+# Height at flowering
+MPH_height_at_flowering <- list()
+MPH_height_at_flowering[1] <- calculate_heterosis("B73", "Mo17", "B73xMo17", "height_at_flowering", field_data)
+MPH_height_at_flowering[2] <- calculate_heterosis("B73", "b015", "B73xb015", "height_at_flowering", field_data)
+MPH_height_at_flowering[3] <- calculate_heterosis("B73", "b015", "b015xB73", "height_at_flowering", field_data)
+MPH_height_at_flowering[4] <- calculate_heterosis("B73", "b131", "B73xb131", "height_at_flowering", field_data)
+MPH_height_at_flowering[5] <- calculate_heterosis("B73", "b131", "b131xB73", "height_at_flowering", field_data)
+MPH_height_at_flowering[6] <- calculate_heterosis("B73", "b172", "B73xb172", "height_at_flowering", field_data)
+MPH_height_at_flowering[7] <- calculate_heterosis("B73", "b172", "b172xB73", "height_at_flowering", field_data)
+MPH_height_at_flowering[8] <- calculate_heterosis("Mo17", "m047", "Mo17xm047", "height_at_flowering", field_data)
+MPH_height_at_flowering[9] <- calculate_heterosis("Mo17", "m047", "m047xMo17", "height_at_flowering", field_data)
+
+df_MPH$MPH_height_at_flowering <- unlist(MPH_height_at_flowering)
+
+df_MPH_long <- df_MPH %>% gather(phenotype, MPH, MPH_height_at_flowering)
+
+df_MPH_long$phenotype <- as.factor(df_MPH_long$phenotype)
+
+```
+
+
+```{r}
+ggbarplot(df_MPH_long,
+    x = "hybrid", y = "MPH",
+    ylab = "Mid-parent heterosis (%)",
+    xlab = "Cross", title = "Mid-parent heterosis for plant height at flowering",
+     fill = "grey", color = "black"
+  ) +
+  geom_hline(yintercept = 0, color = "black") +
+  theme_bw() +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+![](images/MPH_plant_height_flowering.png)
 
 ## Grain yield
 
 All plots of 10-15 plants were collected, the moisture of the grain and the grain mass was adjusted to 14.5% humidity and divided by the number of plants per plot to get a mean value of grain per plant (in grams).
 
 
-### By year
+### Summary by genotype
 
 ```{r}
-col=c("#1b9e77","#d95f02","#7570b3")
 
-field_data %>%
-  filter(grain_yield != 0) %>%
-  ggboxplot("genotype", "grain_yield",
-    color = "year", add = "dotplot",
-    xlab = "genotype", ylab = "Grain yield per plant (g)", title = "Grain yield across 3 years",
-    palette = col,
-    add.params = list(size = 0.7, alpha = 0.2), outlier.shape = NA
-  ) + theme_bw() +
-  rotate_x_text(45) + theme(plot.title = element_text(hjust = 0.5)) + theme(
+field_data <- readRDS("data/phenotyping/field_data.Rds")
+
+MPV <- (mean(field_data[field_data$genotype=="B73",]$grain_yield) + mean(field_data[field_data$genotype=="Mo17",]$grain_yield))/2
+
+# Color coding
+col <- c("#d95f02", "#1b9e77")
+
+field_data %>% ggboxplot(
+  x = "genotype", y = "grain_yield",
+  color = "NOR", ylab = "Grain yield per plant (g)",
+  xlab = "Genotype", add = "dotplot", palette = col,
+  add.params = list(size = 0.7, alpha = 0.2), outlier.shape = NA
+) + theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Grain yield") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_hline(yintercept = MPV, linetype = "dashed", color = "black") + theme(
     axis.text.x = element_text(color = "black"),
     axis.text.y = element_text(color = "black"),
     axis.ticks = element_line(color = "black")
@@ -1219,34 +2044,34 @@ field_data %>%
   theme(plot.title = element_text(hjust = 0.5)) +
   scale_y_continuous(labels = scales::comma_format()) + expand_limits(y = 0)
 
+
+```
+
+![](images/grain_yield_per_plant.png)
+
+### By year
+
+```{r}
+col=c("#1b9e77","#d95f02","#7570b3")
+
+MPV <- (mean(field_data[field_data$genotype=="B73",]$grain_yield) + mean(field_data[field_data$genotype=="Mo17",]$grain_yield))/2
+
+
+ggboxplot(field_data, "genotype", "grain_yield",
+  color = "year", add = "dotplot",
+  xlab = "genotype", ylab = "Grain yield per plant (g)", title = "Grain yield across 3 years",
+  palette = col,
+  add.params = list(size = 0.7, alpha = 0.2), outlier.shape = NA
+) + theme_bw() + geom_hline(yintercept = MPV, linetype = "dashed", color = "black") +
+  rotate_x_text(45) + theme(plot.title = element_text(hjust = 0.5)) +  theme(axis.text.x = element_text(color="black"), 
+      axis.text.y = element_text(color="black"),
+      axis.ticks = element_line(color = "black")) + 
+      theme(plot.title = element_text(hjust = 0.5)) + 
+      scale_y_continuous(labels = scales::comma_format()) + expand_limits(y = 0)
+
 ```
 
 ![](images/grain_yield_across_years.png)
-
-
-```{r}
-
-
-
-# Color coding
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
-
-df <- field_data %>% filter(year=="2025") %>% filter(grain_yield!=0)
-
-MPV <- (mean(df[df$genotype=="B73",]$grain_yield) + mean(df[df$genotype=="Mo17",]$grain_yield))/2
-
- ggboxplot(df, x = "genotype", y = "grain_yield", 
-                         color = "category", ylab = "Grain yield per plant (g)", 
-                         xlab = "Genotype", add = "dotplot", palette = col,
-                         add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + 
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
-  ggtitle("Grain yield") + 
-  theme(plot.title = element_text(hjust = 0.5)) + 
-  geom_hline(yintercept = MPV, linetype = "dashed", color = "black")
-
-
-```
-
 
 #### 2022
 
@@ -1260,16 +2085,20 @@ field_data_sub <- field_data %>% filter(year=="2022")
 MPV <- (mean(field_data_sub[field_data_sub$genotype=="B73",]$grain_yield) + mean(field_data_sub[field_data_sub$genotype=="Mo17",]$grain_yield))/2
 
 # Color coding
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00B6EB", "#A58AFF")
+col <- c("#d95f02", "#1b9e77")
 
 field_data_sub %>% ggboxplot(x = "genotype", y = "grain_yield", 
-                         color = "category", ylab = "Grain yield per plant (g)", 
+                         color = "NOR", ylab = "Grain yield per plant (g)", 
                          xlab = "Genotype", add = "dotplot", palette = col,
-                         add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + 
+                         add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   ggtitle("Grain yield per plant (g) - 2022") + 
   theme(plot.title = element_text(hjust = 0.5)) + 
-  geom_hline(yintercept = MPV, linetype = "dashed", color = "red", lwd=0.8)
+  geom_hline(yintercept = MPV, linetype = "dashed", color = "black", lwd=0.8) +  theme(axis.text.x = element_text(color="black"), 
+      axis.text.y = element_text(color="black"),
+      axis.ticks = element_line(color = "black")) + 
+      theme(plot.title = element_text(hjust = 0.5)) + 
+      scale_y_continuous(labels = scales::comma_format()) + expand_limits(y = 0)
 
 ```
 
@@ -1287,17 +2116,20 @@ field_data_sub <- field_data %>% filter(year=="2024")
 MPV <- (mean(field_data_sub[field_data_sub$genotype=="B73",]$grain_yield) + mean(field_data_sub[field_data_sub$genotype=="Mo17",]$grain_yield))/2
 
 # Color coding
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
+col <- c("#d95f02", "#1b9e77")
 
 field_data_sub %>% ggboxplot(x = "genotype", y = "grain_yield", 
-                         color = "category", ylab = "Grain yield per plant (g)", 
+                         color = "NOR", ylab = "Grain yield per plant (g)", 
                          xlab = "Genotype", add = "dotplot", palette = col,
-                         add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + 
+                         add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   ggtitle("Grain yield per plant (g) - 2024") + 
   theme(plot.title = element_text(hjust = 0.5)) + 
-  geom_hline(yintercept = MPV, linetype = "dashed", color = "red", lwd=0.8)
-
+  geom_hline(yintercept = MPV, linetype = "dashed", color = "black", lwd=0.8) +  theme(axis.text.x = element_text(color="black"), 
+      axis.text.y = element_text(color="black"),
+      axis.ticks = element_line(color = "black")) + 
+      theme(plot.title = element_text(hjust = 0.5)) + 
+      scale_y_continuous(labels = scales::comma_format()) + expand_limits(y = 0)
 
 ```
 
@@ -1315,77 +2147,25 @@ field_data_sub <- field_data %>% filter(year=="2025")
 MPV <- (mean(field_data_sub[field_data_sub$genotype=="B73",]$grain_yield) + mean(field_data_sub[field_data_sub$genotype=="Mo17",]$grain_yield))/2
 
 # Color coding
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
+col <- c("#d95f02", "#1b9e77")
 
 field_data_sub %>% ggboxplot(x = "genotype", y = "grain_yield", 
-                         color = "category", ylab = "Height at flowering (cm)", 
+                         color = "NOR", ylab = "Grain yield per plant (g)", 
                          xlab = "Genotype", add = "dotplot", palette = col,
-                         add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + 
+                         add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   ggtitle("Grain yield per plant (g) - 2025") + 
   theme(plot.title = element_text(hjust = 0.5)) + 
-  geom_hline(yintercept = MPV, linetype = "dashed", color = "red", lwd=0.8)
+  geom_hline(yintercept = MPV, linetype = "dashed", color = "black", lwd=0.8) +  theme(axis.text.x = element_text(color="black"), 
+      axis.text.y = element_text(color="black"),
+      axis.ticks = element_line(color = "black")) + 
+      theme(plot.title = element_text(hjust = 0.5)) + 
+      scale_y_continuous(labels = scales::comma_format()) + expand_limits(y = 0)
 
 ```
 
 ![](images/plant_grain_yield_2025.png)
 
-### Summary by genotype
-
-```{r}
-
-field_data <- readRDS("data/phenotyping/field_data.Rds")
-
-MPV <- (mean(field_data[field_data$genotype=="B73",]$grain_yield) + mean(field_data[field_data$genotype=="Mo17",]$grain_yield))/2
-
-# Color coding
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
-
-field_data %>% ggboxplot(x = "genotype", y = "grain_yield", 
-                         color = "category", ylab = "Grain yield per plant (g)", 
-                         xlab = "Genotype", add = "dotplot", palette = col,
-                         add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + 
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
-  ggtitle("Grain yield") + 
-  theme(plot.title = element_text(hjust = 0.5)) + 
-  geom_hline(yintercept = MPV, linetype = "dashed", color = "black")
-
-
-```
-
-![](images/grain_yield_per_plant.png)
-
-### Summary by NOR
-
-```{r}
-
-# Color coding
-col <- c("#0070C0","#FF0000", "#C49A00", "#53B400", "#00C094","#00B6EB", "#A58AFF")
-
-df <- field_data %>% filter(grain_yield!=0)
-
-MPV <- (mean(df[df$genotype=="B73",]$grain_yield) + mean(df[df$genotype=="Mo17",]$grain_yield))/2
-
-df$category <- factor(df$category, levels = c("B73", "Mo17","B73xMo17", "b015","b131","b172","m047"))
-
-field_data %>% ggboxplot(x = "NOR", y = "grain_yield", 
-                 ylab = "Grain yield per plant (g)", 
-                 xlab = "NOR", color="category", 
-                 add = "dotplot", palette=col, 
-                 add.params = list(size=0.7, alpha = 0.2), outlier.shape = NA) + theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
-  ggtitle("Grain yield") + 
-  theme(plot.title = element_text(hjust = 0.5)) + 
-  geom_hline(yintercept = MPV, linetype = "dashed", color = "black")+  theme(axis.text.x = element_text(color="black"), 
-      axis.text.y = element_text(color="black"),
-      axis.ticks = element_line(color = "black")) + 
-      theme(plot.title = element_text(hjust = 0.5)) + 
-      scale_y_continuous(labels = scales::comma_format())
-
-
-```
-
-![](images/grain_yield_NOR.png)
 
 ### B73xMo17
 
@@ -1414,11 +2194,36 @@ pairs(emm)
 Degrees-of-freedom method: kenward-roger 
 ```
 
-### b015
+
+### B73xb015
 
 ```{r}
 # Subset full dataset
-df <- field_data %>% filter(category %in% c("b015", "B73"))
+df <- field_data %>% filter(genotype %in% c("b015", "B73","B73xb015"))
+
+# Uses the mixed model to adjust for confounding factors (year)
+model <- lmer(grain_yield ~ NOR +
+                (1 | year),
+              data = df)
+
+# Compares genotype means on an equal footing
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+```
+
+
+
+
+
+
+### b015xB73
+
+```{r}
+# Subset full dataset
+df <- field_data %>% filter(genotype %in% c("b015", "B73","b015xB73"))
 
 # Uses the mixed model to adjust for confounding factors (year)
 model <- lmer(grain_yield ~ NOR +
@@ -1434,16 +2239,69 @@ pairs(emm)
 ```
 
 ```
+ contrast                  estimate  SE df t.ratio p.value
+ homozygous - heterozygous    -16.4 3.6 38  -4.562 <0.0001
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+
+### B73xb131
+
+```{r}
+df <- field_data %>% filter(genotype %in% c("b131", "B73","B73xb131"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(grain_yield ~ NOR +
+                (1 | year),
+              data = df)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+```
+
+```
  contrast                  estimate   SE   df t.ratio p.value
- homozygous - heterozygous    -15.9 3.36 50.1  -4.738  <.0001
+ homozygous - heterozygous    -9.55 5.66 43.1  -1.687  0.0988
 
 Degrees-of-freedom method: kenward-roger 
 ```
 
-### b131
+### b131xB73
 
 ```{r}
-df <- field_data %>% filter(category %in% c("b131", "B73"))
+df <- field_data %>% filter(genotype %in% c("b131", "B73","b131xB73"))
+
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(grain_yield ~ NOR +
+                (1 | year),
+              data = df)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+
+```
+
+```
+ contrast                  estimate  SE   df t.ratio p.value
+ homozygous - heterozygous    -16.4 6.6 43.2  -2.486  0.0169
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+### B73xb172
+
+```{r}
+df <- field_data %>% filter(genotype %in% c("b172", "B73","B73xb172"))
 
 # Uses the mixed model to adjust for confounding factors (year, block)
 model <- lmer(grain_yield ~ NOR +
@@ -1461,15 +2319,15 @@ pairs(emm)
 
 ```
  contrast                  estimate   SE df t.ratio p.value
- homozygous - heterozygous    -13.1 4.61 55  -2.847  0.0062
+ homozygous - heterozygous    -17.3 7.96 51  -2.168  0.0348
 
-Degrees-of-freedom method: kenward-rog
+Degrees-of-freedom method: kenward-roger 
 ```
 
-### b172
+### b172xB73
 
 ```{r}
-df <- field_data %>% filter(category %in% c("b172", "B73"))
+df <- field_data %>% filter(genotype %in% c("b172", "B73","b172xB73"))
 
 # Uses the mixed model to adjust for confounding factors (year, block)
 model <- lmer(grain_yield ~ NOR +
@@ -1487,15 +2345,15 @@ pairs(emm)
 
 ```
  contrast                  estimate   SE df t.ratio p.value
- homozygous - heterozygous    -19.1 6.71 68  -2.851  0.0058
+ homozygous - heterozygous    -21.3 9.36 49  -2.276  0.0272
 
 Degrees-of-freedom method: kenward-roger 
 ```
 
-### m047
+### Mo17xm047
 
 ```{r}
-df <- field_data %>% filter(category %in% c("m047", "Mo17"))
+df <- field_data %>% filter(genotype %in% c("m047", "Mo17","Mo17xm047"))
 
 # Uses the mixed model to adjust for confounding factors (year, block)
 model <- lmer(grain_yield ~ NOR +
@@ -1511,15 +2369,40 @@ pairs(emm)
 ```
 
 ```
-contrast                  estimate   SE df t.ratio p.value
- homozygous - heterozygous    -9.04 5.48 61  -1.651  0.1040
+ contrast                  estimate   SE   df t.ratio p.value
+ homozygous - heterozygous    -2.74 7.96 43.4  -0.345  0.7319
 
-Degrees-of-freedom method: kenward-roger
+Degrees-of-freedom method: kenward-roger 
 ```
-## Summary Heterosis
+
+### m047xMo17
 
 ```{r}
+df <- field_data %>% filter(genotype %in% c("m047", "Mo17","m047xMo17"))
 
+# Uses the mixed model to adjust for confounding factors (year, block)
+model <- lmer(grain_yield ~ NOR +
+                (1 | year),
+              data = df)
+
+# Compares genotype means on an equal footing
+# Uses appropriate standard errors that reflect your field design
+emm  <- emmeans(model, ~ NOR)
+
+ # P-value
+pairs(emm)
+```
+
+```
+ contrast                  estimate   SE df t.ratio p.value
+ homozygous - heterozygous    -11.7 6.51 49  -1.798  0.0783
+
+Degrees-of-freedom method: kenward-roger 
+```
+
+### Heterosis grain yield
+
+```{r}
 # Function to calculate MPV
 calculate_heterosis <- function(P1, P2, F1, phenotype, df){
   index_phenotype <-  which(grepl(phenotype, colnames(df)))
@@ -1529,9 +2412,8 @@ calculate_heterosis <- function(P1, P2, F1, phenotype, df){
 }
 
 # Create empty dataframe
-df_MPH = data.frame(matrix(vector(), 9, 3,
-                       dimnames=list(c(), c("hybrid","MPH_grain_yield", 
-                                            "MPH_height_at_flowering")))
+df_MPH = data.frame(matrix(vector(), 9, 2,
+                       dimnames=list(c(), c("hybrid", "MPH_grain_yield")))
 )
 
 
@@ -1551,6 +2433,7 @@ df_MPH$hybrid <- factor(df_MPH$hybrid, levels=c("B73xMo17","B73xb015",
 # Calculate MPV for each hybrid
 
 # Grain yield
+# Height at flowering
 MPH_grain_yield <- list()
 MPH_grain_yield[1] <- calculate_heterosis("B73", "Mo17", "B73xMo17", "grain_yield", field_data)
 MPH_grain_yield[2] <- calculate_heterosis("B73", "b015", "B73xb015", "grain_yield", field_data)
@@ -1564,35 +2447,24 @@ MPH_grain_yield[9] <- calculate_heterosis("Mo17", "m047", "m047xMo17", "grain_yi
 
 df_MPH$MPH_grain_yield <- unlist(MPH_grain_yield)
 
-# Height at flowering
-MPH_height_at_flowering <- list()
-MPH_height_at_flowering[1] <- calculate_heterosis("B73", "Mo17", "B73xMo17", "height_at_flowering", field_data)
-MPH_height_at_flowering[2] <- calculate_heterosis("B73", "b015", "B73xb015", "height_at_flowering", field_data)
-MPH_height_at_flowering[3] <- calculate_heterosis("B73", "b015", "b015xB73", "height_at_flowering", field_data)
-MPH_height_at_flowering[4] <- calculate_heterosis("B73", "b131", "B73xb131", "height_at_flowering", field_data)
-MPH_height_at_flowering[5] <- calculate_heterosis("B73", "b131", "b131xB73", "height_at_flowering", field_data)
-MPH_height_at_flowering[6] <- calculate_heterosis("B73", "b172", "B73xb172", "height_at_flowering", field_data)
-MPH_height_at_flowering[7] <- calculate_heterosis("B73", "b172", "b172xB73", "height_at_flowering", field_data)
-MPH_height_at_flowering[8] <- calculate_heterosis("Mo17", "m047", "Mo17xm047", "height_at_flowering", field_data)
-MPH_height_at_flowering[9] <- calculate_heterosis("Mo17", "m047", "m047xMo17", "height_at_flowering", field_data)
-
-df_MPH$MPH_height_at_flowering <- unlist(MPH_height_at_flowering)
-
-df_MPH_long <- df_MPH %>% gather(phenotype, MPH, MPH_grain_yield:MPH_height_at_flowering)
+df_MPH_long <- df_MPH %>% gather(phenotype, MPH, MPH_grain_yield)
 
 df_MPH_long$phenotype <- as.factor(df_MPH_long$phenotype)
 
-col <-  c("#FFB90F","#556B2F")
+```
 
+
+```{r}
 ggbarplot(df_MPH_long,
-  x = "hybrid", y = "MPH", fill = "phenotype",
-  palette = col, position = position_dodge(0.9),
-  ylab = "Mid-parent heterosis (%)",
-  xlab = "Hybrid", title = "Mid-parent heterosis"
-) +
+    x = "hybrid", y = "MPH",
+    ylab = "Mid-parent heterosis (%)",
+    xlab = "Cross", title = "Mid-parent heterosis for grain yield",
+     fill = "grey", color = "black"
+  ) +
+  geom_hline(yintercept = 0, color = "black") +
   theme_bw() +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   theme(
     axis.text.x = element_text(color = "black"),
     axis.text.y = element_text(color = "black"),
@@ -1600,72 +2472,26 @@ ggbarplot(df_MPH_long,
   ) +
   theme(plot.title = element_text(hjust = 0.5))
 
-
 ```
-
-![](images/MPH_all_hybrids.png)
-
-
-```{r}
-
-col <-  c("#FFB90F","#556B2F")
-
-df_MPH_long %>% filter(hybrid!="B73xMo17") %>%
-ggbarplot(x = "hybrid", y = "MPH", fill="phenotype", 
-          palette=col, position=position_dodge(0.9),
-          ylab = "Mid-parent heterosis (%)",
-          xlab="Hybrid", title="Mid-parent heterosis") +
-  theme_bw() +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + 
-  theme(axis.text.x = element_text(angle=45, hjust=1)) +  
-  theme(axis.text.x = element_text(color="black"), 
-      axis.text.y = element_text(color="black"),
-      axis.ticks = element_line(color = "black")) + 
-      theme(plot.title = element_text(hjust = 0.5))
-```
-
-![](images/MPH_all_hybrids_but_B73xMo17.png)
+![](images/heterosis_grain_yield.png)
 
 
-```{r}
-df_MPH_long %>% filter(hybrid!="B73xMo17") %>% group_by(phenotype) %>%  summarize(mean_MPH=mean(MPH), sd=sd(MPH))
-```
-
-0.122
 
 
-```{r}
-
-df_MPH_long %>% filter(phenotype =="MPH_height_at_flowering") %>% arrange(MPH)
-df_MPH_long %>% filter(phenotype =="MPH_grain_yield") %>% arrange(MPH)
 
 
-df_MPH_long %>% filter(hybrid!="B73xMo17" & phenotype =="MPH_height_at_flowering") %>% arrange(MPH)
-df_MPH_long %>% filter(hybrid!="B73xMo17" & phenotype =="MPH_grain_yield") %>% arrange(MPH)
-```
 
-
-```{r}
-df_MPH_long %>% filter(hybrid=="B73xMo17") %>% group_by(phenotype) %>%  summarize(mean_MPH=mean(MPH), sd=sd(MPH))
-```
-
-Top NILs crosses compare to canonical F1
-
-0.12/0.33 => 36% full heterosis
-
-0.67/4.89 => 14%
-
-490% heterosis for grain yield vs 17% for NOR NILs (17/490 = 3.5%)
-
-33% heterosis for plant height vs 7.5% (7.5/33 = 22%)
+#.
 
 # ##################
 # RNA-seq analysis
-# #################
+# ##################
 
 ## Data
 
 NEBNext Ultra II Directional RNA Library Prep Kit (NEB #E7760). Three repetitions of each sample, paired-end reads (use the option "rna-strandness RF" in HISAT2).
+
+![](images/library_structure_RNAseq.png)
 
 ```{bash, eval=FALSE}
 # Location fastq files
@@ -1715,11 +2541,109 @@ make_fasta <-  function(vector_sequence, path_output, sequence_names){
     }
 }
 
-# Source function for GO analysis (download repo on 
-# https://github.com/johanzi/GOMAP_maize_B73_NAM5
+# Source function for GO analysis (download repo https://github.com/johanzi/GOMAP_maize_B73_NAM5)
 source("P:/git_repositories/GOMAP_maize_B73_NAM5/go_functions.R", chdir = T)
 
+
+perform_GO <- function(list_genes){
+
+  list_ego_results <- ego_analysis(list_genes)
+  
+  lapply(list_ego_results, function(x) sum(x@result$p.adjust < 0.05))
+  
+  df_ego_analysis <- enrichResult2dataframe(list_ego_results)
+  
+  df_ego_analysis_significant <- df_ego_analysis %>% dplyr::filter(p.adjust < 0.05)
+  
+  p1 <- df_ego_analysis_significant %>% filter(ontology=="BP") %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("BP GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+  
+  p2 <- df_ego_analysis_significant %>% filter(ontology=="MF") %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("MF GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+  
+  p3 <- df_ego_analysis_significant %>% filter(ontology=="CC") %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("CC GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+
+    p4 <- df_ego_analysis_significant %>% arrange(qvalue) %>% 
+    head(10) %>% 
+    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
+    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
+    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
+    ylab("GO term") + 
+    ggtitle("GO enrichment") +
+    theme_bw() +
+    theme(axis.text.x = element_text(color="black"),
+          axis.text.y = element_text(color="black"),
+          axis.ticks = element_line(color = "black")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_size_area(max_size = 10) +
+    scale_color_viridis()
+  
+  return(list(p1,p2,p3,p4))
+  
+}
+
+
+
+plot_gene <- function(geneID) {
+  data <- plotCounts(dds,
+    gene = geneID, intgroup = "genotype",
+    main = geneID, return = TRUE
+  )
+
+  data$genotype <- factor(data$genotype, levels = c("B73", "Mo17", "b015", "b131", "b172", "m047", "B73xMo17", "B73xb015", "b131xB73", "B73xb172", "b172xB73", "m047xMo17"), ordered = T)
+
+  data %>%
+    ggplot(aes(x = genotype, y = count)) +
+    geom_boxplot(fill = "white", outlier.colour = NA) +
+    geom_point(size = 2) +
+    theme_bw() +
+    ggtitle(geneID) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    ylab("Normalized read count") +
+    xlab("Genotype") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+}
+
+
 ```
+
 
 
 ## Quality check
@@ -1747,8 +2671,372 @@ fastqc -t 12 -o output_fastqc $i
 
 ```
 
+## A/T Mo17/B73 rRNA expression
 
-## Salmon mapping
+Quantify the expression of the different types of 45S repeats being expressed in the different samples using the A/T polymorphism present in B73 (CTTGAAAATCCGGAGGACCGAAT[A/T]) on subunit 28S and described in [Juppe and Zimmer, 1993](https://doi.org/10.1007/BF00027113).
+
+![](images/AT_polymorphism_scheme.png)
+
+![](images/B73_AT_polymorphism_28S.png)
+
+This same polymorphism was reused to identify B73/Mo17 allele-specific expression bias of 45S rDNA with a kmer approach in [Liu et al., 2017](https://www.nature.com/articles/srep42444).
+
+We expect only T allele in B73, only A allele in Mo17, and 50/50 in crosses if we have a additive expression levels of the B73 and Mo17 NORs in the heterozygous plants.
+
+
+### Use one 28S copy as mapping template
+
+```{bash, eval=FALSE}
+
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/rdna_annotation/28S_B73
+
+# Take one copy of 28S (with A allele) => on - strand so use -s in getfasta to have
+# the 28S in the transcription direction
+# chr6:22388348..22391730 (- strand) => Size 3,382 bp
+
+echo -e "chr6\t22388348\t22391730\t28S\t.\t-" > seq_28S_B73.bed
+
+# Isolate the 28S sequence from the B73 NAM5 genome fasta file
+bedtools getfasta -s -fi /mnt/ceph-hdd/projects/scc_uanp_scholten/data/databases/genomes/B73_NAM5/Zm-B73-REFERENCE-NAM-5.0.fa -bed seq_28S_B73.bed > seq_28S_B73.fa
+
+# Rename fasta header "seq_28S" to avoid non regex characters
+
+# Create bowtie index
+srun -p scc-cpu --cpus-per-task=4 --mem=4G --time=00:10:00 bowtie-build \
+  -f seq_28S_B73.fa seq_28S_B73 &
+
+# Check position of the A/T polymorphism
+bowtie -x seq_28S_B73 -c CTTGAAAATCCGGAGGACCGAATA
+0       +       seq_28S 1790    CTTGAAAATCCGGAGGACCGAATA        IIIIIIIIIIIIIIIIIIIIIIII        0
+# reads processed: 1
+# reads with at least one alignment: 1 (100.00%)
+# reads that failed to align: 0 (0.00%)
+Reported 1 alignments
+
+# Polymorphism located at position 1790+24 = 1814 on the 28S sequence
+
+```
+
+This copy has A allele, making it the REF allele in the variant calling, T being ALT allele (alternative allele).
+
+### Mapping and A/T 28S variant call
+
+#### Concatenate 3 replicates
+
+```{bash, eval=FALSE}
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/rdna_annotation/28S_B73
+
+module load gcc bowtie samtools bcftools apptainer
+
+path_fastq="/mnt/ceph-hdd/projects/scc_uanp_scholten/data/ngs_data/BGI_data/F22FTSEUHT1495_LIBfbksR_mRNA_sRNA_degradome_johan_doga/F22FTSEUHT1495_LIBfbksR_PE100/raw_data"
+
+# Concatenate the 3 biological rep
+while read i; do
+  find $path_fastq/${i}_* -name "*1.fq.gz" | xargs cat > fastq_files/${i}_1.fq.gz &
+  find $path_fastq/${i}_* -name "*2.fq.gz" | xargs cat > fastq_files/${i}_2.fq.gz &
+done < list_samples.txt
+
+```
+
+#### Trim data
+
+```{bash, eval=FALSE}
+#!/bin/bash
+#
+#SBATCH --job-name=trimming_cutadapt
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=16000
+#SBATCH --output=log/slurm.%j.%A.%a.out
+#SBATCH --error=log/slurm.%j.%A.%a.err
+#SBATCH --partition=scc-cpu
+#SBATCH --time=04:00:00
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-12
+
+module load apptainer/1.3.4
+
+app_shortcut="apptainer run --bind /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/rdna_annotation/28S_B73 /sw/container/bioinformatics/cutadapt-5.0.sif"
+
+input_file=$(sed -n ${SLURM_ARRAY_TASK_ID}p list_samples.txt)
+
+$app_shortcut cutadapt \
+  -j 8 \
+  -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
+  -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT \
+  -q 20,20 \
+  --minimum-length 20 \
+  -o trimmed_fastq/${input_file}_1.trimmed.fq.gz \
+  -p trimmed_fastq/${input_file}_2.trimmed.fq.gz \
+  fastq_files/${input_file}_1.fq.gz \
+  fastq_files/${input_file}_2.fq.gz
+
+```
+
+#### Mapping
+
+Map with 2 mismatches allowed (default bowtie: -n 2)
+
+```{bash, eval=FALSE}
+
+#!/bin/bash
+#
+#SBATCH --job-name=bowtie_mapping
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=16000
+#SBATCH --output=log/slurm.%j.%A.%a.out
+#SBATCH --error=log/slurm.%j.%A.%a.err
+#SBATCH --partition=scc-cpu
+#SBATCH --time=04:00:00
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-12
+
+module load gcc bowtie samtools
+
+input_file=$(sed -n ${SLURM_ARRAY_TASK_ID}p list_samples.txt)
+
+bowtie -p 8 -S -x seq_28S_B73 \
+-1 trimmed_fastq/${input_file}_1.trimmed.fq.gz -2 trimmed_fastq/${input_file}_2.trimmed.fq.gz | \
+samtools view -F 4 -b |  samtools sort -o mapped_reads/${input_file}.bam - 
+
+samtools index mapped_reads/${input_file}.bam
+
+```
+
+Number of reads mapped in each sample
+
+```{bash, eval=FALSE}
+for i in *bam; do 
+  nb_reads=$(samtools flagstats $i | grep "in total" | cut -d' ' -f1)
+  echo -e "$i\t$nb_reads"
+done | sort -k2n
+
+B73xb015.bam    84088
+b131xB73.bam    91056
+b131.bam        102322
+b172xB73.bam    103028
+B73xMo17.bam    104048
+b172.bam        106120
+m047.bam        133088
+b015.bam        148228
+B73.bam 187938
+Mo17.bam        197594
+m047xMo17.bam   282162
+B73xb172.bam    298826
+
+```
+
+We have between 84088 and 298826 reads (R1+R2) mapping to the 28S per sample.
+
+#### 28S A/T polymorphism
+
+```{bash, eval=FALSE}
+
+module load bcftools
+
+for i in mapped_reads/*bam; do
+  call=$(bcftools mpileup \
+      -d 300000 \
+      -f seq_28S_B73.fa \
+      -r seq_28S:1814-1814 \
+      -a FORMAT/DP,FORMAT/AD \
+      $i \
+      -Ou |
+  bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%DP\t%AD]\n')
+  name=$(basename "$i" | cut -d. -f1)
+  echo -e "$name\t$call" >> call_1814.txt
+done
+
+B73     seq_28S 1814    A       T,G,C   6636    41,6589,2,4
+B73xMo17        seq_28S 1814    A       T,C,<*> 3715    1748,1963,4,0
+B73xb015        seq_28S 1814    A       T,C,<*> 3090    1560,1526,4,0
+B73xb172        seq_28S 1814    A       T,C,G   10990   5607,5365,12,6
+Mo17    seq_28S 1814    A       T,G,C   7565    7518,39,4,4
+b015    seq_28S 1814    A       T,C,G   5398    5370,18,7,3
+b131    seq_28S 1814    A       T,C,G   3857    3809,40,7,1
+b131xB73        seq_28S 1814    A       T,G,C   3407    1788,1611,5,3
+b172    seq_28S 1814    A       T,G,C   3909    3882,23,3,1
+b172xB73        seq_28S 1814    A       T,C,G   3684    1796,1880,6,2
+m047    seq_28S 1814    A       T,C,G   4792    77,4699,9,7
+m047xMo17       seq_28S 1814    A       T,C,G   10442   5329,5079,28,6
+
+
+```
+
+| sample    | DP    | A    | T    | %A   | %T  |
+|-----------|-------|------|------|------|-----|
+| B73       | 6636  | 41   | 6589 | 1%   | 99% |
+| B73xMo17  | 3715  | 1748 | 1963 | 47%  | 53% |
+| B73xb015  | 3090  | 1560 | 1526 | 51%  | 49% |
+| B73xb172  | 10990 | 5607 | 5365 | 51%  | 49% |
+| Mo17      | 7565  | 7518 | 39   | 99%  | 1%  |
+| b015      | 5398  | 5370 | 18   | 100% | 0%  |
+| b131      | 3857  | 3809 | 40   | 99%  | 1%  |
+| b131xB73  | 3407  | 1788 | 1611 | 53%  | 47% |
+| b172      | 3909  | 3882 | 23   | 99%  | 1%  |
+| b172xB73  | 3684  | 1796 | 1880 | 49%  | 51% |
+| m047      | 4792  | 77   | 4699 | 2%   | 98% |
+| m047xMo17 | 10442 | 5329 | 5079 | 51%  | 49% |
+
+These results confirm the NOR introgression with only A allele expressed in genotypes with Mo17 NOR (Mo17, b015, b131, and b172), only T allele expressed in genotypes with B73 NOR (B73, m047), and an additive expression levels of the two alleles in all crosses.
+
+
+#### Variant calling
+
+```{bash, eval=FALSE}
+
+#!/bin/bash
+#
+#SBATCH --job-name=variant_calling
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --output=log/slurm.%j.%A.%a.out
+#SBATCH --error=log/slurm.%j.%A.%a.err
+#SBATCH --partition=scc-cpu
+#SBATCH --time=00:10:00
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-12
+
+module load gcc bcftools
+
+input_file=$(sed -n ${SLURM_ARRAY_TASK_ID}p list_samples.txt)
+
+bcftools mpileup -d 105000 -Ou -f seq_28S_B73.fa mapped_reads/${input_file}.bam  | \
+    bcftools call -mv -Oz -o variant_call/${input_file}.vcf.gz
+
+```
+
+Concatenate all vcf files
+
+```{bash, eval=FALSE}
+
+for i in *vcf.gz; do bcftools index $i; done
+
+\ls -1 *gz > file_list.txt
+
+bcftools merge --file-list file_list.txt -Oz -o merged_samples.vcf.gz
+
+# Rename samples 
+bcftools query -l merged_samples.vcf.gz > renames.txt
+sed -i 's/mapped_reads\///g' renames.txt
+sed -i 's/\.bam//g' renames.txt
+
+bcftools reheader -s renames.txt -o merged_samples.renamed.vcf.gz merged_samples.vcf.gz
+mv merged_samples.renamed.vcf.gz merged_samples.vcf.gz
+
+# Index
+bcftools index merged_samples.vcf.gz
+
+
+#bcftools view -r seq_28S:1814 merged_samples.vcf.gz > seq_28S_1814.vcf
+
+```
+
+##### pyvcf
+
+```{bash, eval=FALSE}
+which python
+/usr/local/bin/python
+
+python --version
+Python 3.6.8
+
+module load miniforge3/24.3.0-0
+
+which python
+/sw/rev/25.04/cascadelake_opx_rocky8/linux-rocky8-skylake_avx512/gcc-8.5.0/miniforge3-24.3.0-0-kdlupzm5jew4fgsaqohoky5vd6w7on7d/bin/python
+
+python --version
+Python 3.10.14
+
+pip install "setuptools<58" --upgrade
+pip uninstall pyvcf
+pip install pyvcf
+
+# The package was installed in /user/zicola/u14929/.local/lib/python3.10/site-packages
+
+```
+
+Note that the software is installed on Python 3.10.14. When I load miniforge3/24.3.0-0 that load another version of python (3.11.9), I cannot access `vcf` python package anymore.
+
+Modify script to get it compatible with python3 => vcf_melt_py3.py
+
+```{bash, eval=FALSE}
+
+>>> import sys
+>>> sys.path
+['', '/sw/rev/25.04/cascadelake_opx_rocky8/linux-rocky8-skylake_avx512/gcc-8.5.0/miniforge3-24.3.0-0-kdlupzm5jew4fgsaqohoky5vd6w7on7d/lib/python310.zip', '/sw/rev/25.04/cascadelake_opx_rocky8/linux-rocky8-skylake_avx512/gcc-8.5.0/miniforge3-24.3.0-0-kdlupzm5jew4fgsaqohoky5vd6w7on7d/lib/python3.10', '/sw/rev/25.04/cascadelake_opx_rocky8/linux-rocky8-skylake_avx512/gcc-8.5.0/miniforge3-24.3.0-0-kdlupzm5jew4fgsaqohoky5vd6w7on7d/lib/python3.10/lib-dynload', '/user/zicola/u14929/.local/lib/python3.10/site-packages', '/sw/rev/25.04/cascadelake_opx_rocky8/linux-rocky8-skylake_avx512/gcc-8.5.0/miniforge3-24.3.0-0-kdlupzm5jew4fgsaqohoky5vd6w7on7d/lib/python3.10/site-packages']
+
+```
+
+
+```{python, eval=FALSE}
+
+""" Melt a VCF file into a tab delimited set of calls, one per line
+
+VCF files have all the calls from different samples on one line.  This
+script reads vcf on stdin and writes all calls to stdout in tab delimited
+format with one call in one sample per line.  This makes it easy to find
+a given sample's genotype with, say, grep.
+"""
+
+import sys
+import csv
+import vcf
+
+out = csv.writer(sys.stdout, delimiter='\t')
+if len(sys.argv) > 1:
+    inp = open(sys.argv[1])
+else:
+    inp = sys.stdin
+reader = vcf.VCFReader(inp)
+
+formats = list(reader.formats.keys())
+infos = reader.infos.keys()
+
+header = ["SAMPLE"] + list(formats) + ['FILTER', 'CHROM', 'POS', 'REF', 'ALT', 'ID'] \
+        + ['info.' + x for x in infos]
+
+out.writerow(header)
+
+def flatten(x):
+    if type(x) == type([]):
+        x = ','.join(map(str, x))
+    return x
+
+for record in reader:
+    info_row = [flatten(record.INFO.get(x, None)) for x in infos]
+    fixed = [record.CHROM, record.POS, record.REF, record.ALT, record.ID]
+
+    for sample in record.samples:
+        row = [sample.sample]
+        # Format fields not present will simply end up "blank"
+        # in the output
+        row += [flatten(getattr(sample.data, x, None)) for x in formats]
+        row += [record.FILTER or '.']
+        row += fixed
+        row += info_row
+        out.writerow(row)
+
+```
+
+```{bash, eval=FALSE}
+zcat merged_samples.vcf.gz | python vcf_melt_py3.py  > merged_samples.vcf.melted.txt
+unix2dos merged_samples.vcf.melted.txt
+```
+
+Import merged_samples.vcf.melted.txt in Excel => Transform data, keep col PL and Info.DP4 as text (otherwise, commas are gone)
+
+
+
+
+
+## Gene expression analysis
 
 ### Creating Salmon indexes
 
@@ -1773,7 +3061,7 @@ wget ${server}//fasta/zea_mays/cdna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.cdna.all.f
 
 gunzip Zea_mays.Zm-B73-REFERENCE-NAM-5.0.cdna.all.fa.gz
 
-# Merge all fasta files and remove extra informations from the headers
+# Merge all fasta files and remove extra information from the headers
 cat Zea_mays.Zm-B73-REFERENCE-NAM-5.0.cdna.all.fa Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna.toplevel.fa | cut -d' ' -f1 > B73_NAM5_index.fasta
 
 ```
@@ -1950,7 +3238,7 @@ cat NCBI_FCS_GX_B73xb172_3.tabular | cut -f8  | sort | uniq -c | sort -r
 
 ```
 
-Highest contamination read number attributed to Psilocybe cubensis => 581k reads.
+Highest contamination read number attributed to P. cubensis => 581k reads. No idea where this could come from.
 
 Filter out contaminant reads:
 
@@ -1963,18 +3251,9 @@ seqkit grep -v -f id_contaminants.txt B73xb172_3_L1_2.fq.gz > B73xb172_3_L1_2.cl
 ```
 
 
-#.
-
-## A/T Mo17/B73 rRNA expression
 
 
 
-
-#.
-
-
-
-#.
 
 
 ## Import data in DESeq2
@@ -2096,6 +3375,260 @@ ggplot(pcaData, aes(PC1, PC2, color = NOR, label = sample)) +
 ```
 
 ![](images/PCA_salmon_NOR.png)
+
+## Expression genes RegionA
+
+The 56 genes annotated in B73 RegionA should be absent in Mo17 and B73-NILs b015, b131, and b172. We expect no expression in these samples.
+
+```{r}
+txi <- readRDS("data/rnaseq/txi.rds")
+
+# Upload the coldata file for all experiment
+coldata <- read.table ("data/rnaseq/coldata.txt", header=T)
+
+list_genes_regionA <- readRDS("data/annotations/list_genes_regionA.Rds")
+
+txi_subset <- lapply(txi, function(x) {
+  if (is.matrix(x)) x[rownames(x) %in% list_genes_regionA, ] else x
+})
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi_subset,
+                  colData = coldata,
+                  design = ~ genotype)
+
+# Likelihood ratio test
+dds <- DESeq(dds)
+
+# Variance stabilizing transformation
+vsd <- varianceStabilizingTransformation(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "genotype"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+ggplot(pcaData, aes(PC1, PC2, color = genotype, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+
+```
+
+![](images/PCA_RegionA_gene_expression.png)
+It is clear that all genotypes that contain at least one copy of the B73 NOR cluster apart from the B73-NILs and Mo17.
+
+
+```{r}
+m_dds <- counts(dds, normalized=TRUE)
+
+# Remove genes with less than 5 read counts
+# 36 retained
+#m_dds_filtered <- m_dds[rowSums(m_dds) > 5,]
+
+# Average for each sample
+m_dds_filtered_avr <- sapply(seq(1, ncol(m_dds), 3), function(j) rowMeans(m_dds[, j+(0:2)])) 
+df_dds_filtered_avr <- as.data.frame(m_dds_filtered_avr)
+
+colnames(df_dds_filtered_avr) <- c(unique(coldata$genotype))
+
+df_dds_filtered_avr <- df_dds_filtered_avr %>% rownames_to_column("gene")
+
+long_df_dds_filtered_avr <- df_dds_filtered_avr %>% gather(sample, gene, b015:Mo17)
+
+long_df_dds_filtered_avr$sample <- factor(long_df_dds_filtered_avr$sample, levels = c("B73", "Mo17", "b015", "b131", "b172", "m047", "B73xMo17", "B73xb015", "b131xB73", "B73xb172", "b172xB73", "m047xMo17"), ordered = T)
+
+  long_df_dds_filtered_avr %>%
+    ggplot(aes(x = sample, y = gene)) +
+    geom_boxplot(fill = "white", outlier.colour = NA) +
+    geom_point(size = 2) +
+    theme_bw() +
+    ggtitle("Normalized read count genes RegionA") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    ylab("Normalized read count") +
+    xlab("Genotype") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+}
+
+
+```
+
+
+```{r}
+
+list_genes_regionA <- readRDS("data/annotations/list_genes_regionA.Rds")
+
+
+plot_gene(list_genes_regionA[[34]])
+
+
+Zm00001eb286210 
+
+plot_gene("Zm00001eb286210")
+```
+
+
+
+
+## Expression NOR genes
+
+180 genes identified in B73 NOR.
+
+
+```{r}
+txi <- readRDS("data/rnaseq/txi.rds")
+
+# Upload the coldata file for all experiment
+coldata <- read.table ("data/rnaseq/coldata.txt", header=T)
+
+
+
+list_genes_NOR <- readRDS("data/annotations/list_genes_NOR.Rds")
+
+txi_subset <- lapply(txi, function(x) {
+  if (is.matrix(x)) x[rownames(x) %in% list_genes_NOR, ] else x
+})
+
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi_subset,
+                  colData = coldata,
+                  design = ~ genotype)
+
+
+# Likelihood ratio test
+dds <- DESeq(dds)
+
+# Get results
+#res <- results(res)
+
+# Variance stabilizing transformation
+vsd <- varianceStabilizingTransformation(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "genotype"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+ggplot(pcaData, aes(PC1, PC2, color = genotype, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+
+```
+
+
+
+
+```{r}
+
+
+plot_gene <- function(geneID) {
+  data <- plotCounts(dds,
+    gene = geneID, intgroup = "genotype",
+    main = geneID, return = TRUE
+  )
+
+  data$genotype <- factor(data$genotype, levels = c("B73", "Mo17", "b015", "b131", "b172", "m047", "B73xMo17", "B73xb015", "b131xB73", "B73xb172", "b172xB73", "m047xMo17"), ordered = T)
+
+  data %>%
+    ggplot(aes(x = genotype, y = count)) +
+    geom_boxplot(fill = "white", outlier.colour = NA) +
+    geom_point(size = 2) +
+    theme_bw() +
+    ggtitle(geneID) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    ylab("Normalized read count") +
+    xlab("Genotype") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+}
+
+list_genes_regionA <- readRDS("data/annotations/list_genes_regionA.Rds")
+
+
+plot_gene(list_genes_regionA[[34]])
+
+```
+
+## Expression NOR genes outside of RegionA
+
+126 genes
+
+
+```{r}
+txi <- readRDS("data/rnaseq/txi.rds")
+
+# Upload the coldata file for all experiment
+coldata <- read.table ("data/rnaseq/coldata.txt", header=T)
+
+
+list_genes_NOR_wo_RegionA <- readRDS("data/annotations/list_genes_NOR_wo_RegionA.Rds")
+
+txi_subset <- lapply(txi, function(x) {
+  if (is.matrix(x)) x[rownames(x) %in% list_genes_NOR_wo_RegionA, ] else x
+})
+
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi_subset,
+                  colData = coldata,
+                  design = ~ genotype)
+
+
+# Likelihood ratio test
+dds <- DESeq(dds)
+
+# Get results
+#res <- results(res)
+
+# Variance stabilizing transformation
+vsd <- varianceStabilizingTransformation(dds, blind=TRUE)
+
+# Create PCA
+pcaData <- plotPCA(vsd, intgroup=c("sample", "genotype"), returnData=TRUE)
+
+# Get percentage variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+ggplot(pcaData, aes(PC1, PC2, color = genotype, label = sample)) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("PCA gene expression") +
+  theme_bw() +
+  geom_text(size = 3) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = scales::comma_format())
+
+
+```
+
 
 ## Genes differentially expressed
 
@@ -2256,7 +3789,7 @@ df_ego_analysis_significant %>% arrange(qvalue) %>% filter(ontology=="CC") %>%
 
 ```{r}
 
-txi <- readRDS("data/txi.rds")
+txi <- readRDS("data/rnaseq/txi.rds")
 
 # Create a DESeq2 matrix
 dds <- DESeqDataSetFromTximport(txi,
@@ -2278,7 +3811,7 @@ DEG <- as.data.frame(res) %>% rownames_to_column("geneID")
 
 sigDEG <- as.data.frame(res) %>% rownames_to_column("geneID") %>% filter(padj < 0.05)
 
-write.table(sigDEG, "data/RNAseq/DEGs_wo_b015.txt", 
+write.table(sigDEG, "data/rnaseq/DEGs_wo_b015.txt", 
             quote=FALSE, row.names=FALSE, sep="\t")
 ```
 
@@ -2312,6 +3845,14 @@ EnhancedVolcano(res,
 Only one gene with log2FC < 2 = Zm00001eb396230
 
 #### GO analysis
+
+
+```{r}
+lp <- perform_GO(sigDEG$geneID)
+
+(lp[[1]] | lp[[2]] | lp[[3]])
+```
+
 
 ```{r}
 
@@ -3241,13 +4782,58 @@ intersect <- Reduce(intersect, DEG_list_geneID)
 
 
 
-# Time-series style
+# LRT analyses
 
 ```{r}
 txi <- readRDS("data/rnaseq/txi.rds")
 
 # Upload the coldata file for all experiment
 coldata <- read.table ("data/rnaseq/coldata.txt", header=T)
+
+```
+
+
+
+```{r}
+require(DEGreport)
+
+# Create a DESeq2 matrix
+dds <- DESeqDataSetFromTximport(txi,
+                  colData = coldata,
+                  design = ~ genotype)
+
+
+# Likelihood ratio test
+dds <- DESeq(dds)
+
+# Get results
+#res <- results(res)
+
+
+plot_gene <- function(geneID) {
+  data <- plotCounts(dds,
+    gene = geneID, intgroup = "genotype",
+    main = geneID, return = TRUE
+  )
+
+  data$genotype <- factor(data$genotype, levels = c("B73", "Mo17", "b015", "b131", "b172", "m047", "B73xMo17", "B73xb015", "b131xB73", "B73xb172", "b172xB73", "m047xMo17"), ordered = T)
+
+  data %>%
+    ggplot(aes(x = genotype, y = count)) +
+    geom_boxplot(fill = "white", outlier.colour = NA) +
+    geom_point(size = 2) +
+    theme_bw() +
+    ggtitle(geneID) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    ylab("Normalized read count") +
+    xlab("Genotype") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+}
+
+list_genes_regionA <- readRDS("data/annotations/list_genes_regionA.Rds")
+
+
+plot_gene(list_genes_regionA[[34]])
 
 ```
 
@@ -3321,6 +4907,7 @@ ggsave("images/clusters_B73_Mo17_B73xMo17.png", p1, width = 8, height = 6)
 ```
 
 ![](images/clusters_B73_Mo17_B73xMo17.png)
+
 
 
 
@@ -3966,6 +5553,67 @@ ComplexUpset::upset(df, names(genes), min_size = 10)
 ```
 
 
+### Only up NA
+
+```{r}
+# Convert long to large
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+df_analysis <- df_analysis %>% filter(het_vs_hom=="up")
+
+#df_analysis_large <- reshape(data=df_analysis, idvar="geneID", v.names=c("geneID"), timevar="analysis", direction="wide")
+
+genes <- list(B73xMo17=df_analysis[df_analysis$analysis=="B73xMo17", "geneID"],
+              B73xb015=df_analysis[df_analysis$analysis=="B73xb015", "geneID"],
+              b131xB73=df_analysis[df_analysis$analysis=="b131xB73", "geneID"],
+              B73xb172=df_analysis[df_analysis$analysis=="B73xb172", "geneID"],
+              b172xB73=df_analysis[df_analysis$analysis=="b172xB73", "geneID"],
+              B73xb172_b172xB73=df_analysis[df_analysis$analysis=="B73xb172_b172xB73", "geneID"])
+              
+
+# convert to data frame of membership (one row per gene)
+all_genes <- unique(unlist(genes))
+df <- tibble(gene = all_genes)
+for(nm in names(genes)){
+df[[nm]] <- df$gene %in% genes[[nm]]
+}
+
+ComplexUpset::upset(df, names(genes), min_size = 10)
+```
+
+
+
+### Only down NA
+
+```{r}
+# Convert long to large
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+df_analysis <- df_analysis %>% filter(het_vs_hom=="down")
+
+#df_analysis_large <- reshape(data=df_analysis, idvar="geneID", v.names=c("geneID"), timevar="analysis", direction="wide")
+
+genes <- list(B73xMo17=df_analysis[df_analysis$analysis=="B73xMo17", "geneID"],
+              B73xb015=df_analysis[df_analysis$analysis=="B73xb015", "geneID"],
+              b131xB73=df_analysis[df_analysis$analysis=="b131xB73", "geneID"],
+              B73xb172=df_analysis[df_analysis$analysis=="B73xb172", "geneID"],
+              b172xB73=df_analysis[df_analysis$analysis=="b172xB73", "geneID"],
+              B73xb172_b172xB73=df_analysis[df_analysis$analysis=="B73xb172_b172xB73", "geneID"])
+              
+
+# convert to data frame of membership (one row per gene)
+all_genes <- unique(unlist(genes))
+df <- tibble(gene = all_genes)
+for(nm in names(genes)){
+df[[nm]] <- df$gene %in% genes[[nm]]
+}
+
+ComplexUpset::upset(df, names(genes), min_size = 10)
+```
+
+
+
+
 ```{r}
 
 df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
@@ -3982,88 +5630,116 @@ ck <- compareCluster(geneCluster = genes)
 ```
 
 
+### Check locations of NA genes
 
-## GO analysis
+```{bash, eval=FALSE}
+# Download gene annotation B73 NAM5
+wget https://download.maizegdb.org/Zm-B73-REFERENCE-NAM-5.0/Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.gff3
 
-### Function
+# Keep only genes
+awk '$3=="gene"' Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.gff3 > Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.gff3
+
+module load bedops
+gff2bed < Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.gff3 > Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.bed
+
+# Isolate gene name
+cut -f10 Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.bed | cut -d";" -f1 | cut -d"=" -f2 > gene_names.txt
+
+cut -f1-3 Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.bed > tmp1
+cut -f5-6 Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.bed > tmp2
+paste tmp1 gene_names.txt tmp2 > Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.simplified.bed
+
+```
 
 ```{r}
 
-perform_GO <- function(list_genes){
+B73_NAM5_genes <- read.delim("data/annotations/Zm-B73-REFERENCE-NAM-5.0_Zm00001eb.1.genes.simplified.bed", header=FALSE)
 
-  list_ego_results <- ego_analysis(list_genes)
-  
-  lapply(list_ego_results, function(x) sum(x@result$p.adjust < 0.05))
-  
-  df_ego_analysis <- enrichResult2dataframe(list_ego_results)
-  
-  df_ego_analysis_significant <- df_ego_analysis %>% dplyr::filter(p.adjust < 0.05)
-  
-  p1 <- df_ego_analysis_significant %>% filter(ontology=="BP") %>% arrange(qvalue) %>% 
-    head(10) %>% 
-    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
-    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
-    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
-    ylab("GO term") + 
-    ggtitle("BP GO enrichment") +
-    theme_bw() +
-    theme(axis.text.x = element_text(color="black"),
-          axis.text.y = element_text(color="black"),
-          axis.ticks = element_line(color = "black")) +
-    theme(plot.title = element_text(hjust = 0.5)) +
-    scale_size_area(max_size = 10) +
-    scale_color_viridis()
-  
-  p2 <- df_ego_analysis_significant %>% filter(ontology=="MF") %>% arrange(qvalue) %>% 
-    head(10) %>% 
-    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
-    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
-    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
-    ylab("GO term") + 
-    ggtitle("MF GO enrichment") +
-    theme_bw() +
-    theme(axis.text.x = element_text(color="black"),
-          axis.text.y = element_text(color="black"),
-          axis.ticks = element_line(color = "black")) +
-    theme(plot.title = element_text(hjust = 0.5)) +
-    scale_size_area(max_size = 10) +
-    scale_color_viridis()
-  
-  p3 <- df_ego_analysis_significant %>% filter(ontology=="CC") %>% arrange(qvalue) %>% 
-    head(10) %>% 
-    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
-    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
-    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
-    ylab("GO term") + 
-    ggtitle("CC GO enrichment") +
-    theme_bw() +
-    theme(axis.text.x = element_text(color="black"),
-          axis.text.y = element_text(color="black"),
-          axis.ticks = element_line(color = "black")) +
-    theme(plot.title = element_text(hjust = 0.5)) +
-    scale_size_area(max_size = 10) +
-    scale_color_viridis()
+colnames(B73_NAM5_genes) <- c("chr","start","end","name","score","strand")
 
-    p4 <- df_ego_analysis_significant %>% arrange(qvalue) %>% 
-    head(10) %>% 
-    mutate(Description = fct_reorder(Description, FoldEnrich)) %>%
-    ggplot(aes(x=FoldEnrich, y=Description, color=-log10(qvalue))) +
-    geom_point(aes(size = Count))  + xlab("Fold enrichment") + 
-    ylab("GO term") + 
-    ggtitle("GO enrichment") +
-    theme_bw() +
-    theme(axis.text.x = element_text(color="black"),
-          axis.text.y = element_text(color="black"),
-          axis.ticks = element_line(color = "black")) +
-    theme(plot.title = element_text(hjust = 0.5)) +
-    scale_size_area(max_size = 10) +
-    scale_color_viridis()
-  
-  return(list(p1,p2,p3,p4))
-  
-}
+df_analysis <- readRDS("data/rnaseq/summary_LRT_analysis.Rds")
+
+df_analysis_annotated <- merge.data.frame(df_analysis, B73_NAM5_genes, by.x="geneID",by.y="name")
+
+table(df_analysis_annotated$chr)
+
 
 ```
+
+
+```{r}
+chr <- rep(paste0("chr", 1:10), 1)
+size_chr <- c("308452471", "243675191", "238017767", "250330460", "226353449",
+"181357234", "185808916", "182411202", "163004744", "152435371")
+
+df_chromosomes = data.frame(chr=chr, size_chr=as.integer(size_chr))
+
+table_NA <- as.data.frame(table(df_analysis_annotated$chr))
+colnames(table_NA) <- c("chr","number_NA_genes")
+
+df_chr_NA <- merge.data.frame(df_chromosomes, table_NA, by.x="chr",by.y="chr")
+
+ggplot(df_chr_NA, aes(x = size_chr, y = number_NA_genes)) +
+  geom_point() +
+  geom_smooth(method = "lm", col = "black") +
+  stat_regline_equation(label.x.npc = "left", label.y.npc = "top")
+
+
+require(ggplot2)
+require(smplot2)
+
+ggplot(df_chr_NA, aes(x = size_chr, y = number_NA_genes)) +
+  geom_point() +
+  geom_smooth(method = "lm", col = "black") +
+  sm_statCorr(color = "black", corr_method = "pearson")
+
+```
+
+```{r}
+
+df_analysis_annotated_b015 <- df_analysis_annotated %>% filter(analysis=="B73xb015")
+
+table_NA <- as.data.frame(table(df_analysis_annotated_b015$chr))
+colnames(table_NA) <- c("chr","number_NA_genes")
+
+df_chr_NA <- merge.data.frame(df_chromosomes, table_NA, by.x="chr",by.y="chr")
+
+ggplot(df_chr_NA, aes(x = size_chr, y = number_NA_genes)) +
+  geom_point() +
+  geom_smooth(method = "lm", col = "black") +
+  stat_regline_equation(label.x.npc = "left", label.y.npc = "top")
+
+
+require(ggplot2)
+require(smplot2)
+
+ggplot(df_chr_NA, aes(x = size_chr, y = number_NA_genes)) +
+  geom_point() +
+  geom_smooth(method = "lm", col = "black") +
+  sm_statCorr(color = "black", corr_method = "pearson")
+```
+
+
+# ###################################
+
+## Identify genes with polymorphisms => Should be Mo17
+
+I can check which NA genes are potentially in introgressions. I need to map the raw reads on them and see if they have polymorphisms.
+
+
+```{bash, eval=FALSE}
+
+
+
+```
+
+
+# ###################################
+
+
+## GO analysis
+
+
 
 ### B73xMo17
 
@@ -4247,6 +5923,11 @@ lp[[4]]
 
 # Data
 
+TraPR sRNA-seq libraries were made with the NEBNext small RNA kit (cat. No. E7300, NEB).
+
+![](images/library_structure_sRNAseq.png)
+
+
 In `/mnt/ceph-hdd/projects/scc_uanp_scholten/data/ngs_data/BGI_data/F24A910000280_LIBdyjmR_sRNA_maize`
 
 
@@ -4383,7 +6064,6 @@ m047.fa       FASTA   DNA   1,384,406  31,220,097       18     22.6       47
 m047xMo17.fa  FASTA   DNA   1,610,528  36,199,676       18     22.5       47
 
 
-
 # Format and sort data by sequence name
 for i in *.fa; do
   prefix=$(basename ${i%%.*})
@@ -4394,8 +6074,9 @@ done
 
 ```
 
-# Merge data
+Very low read number in two libraries (B73 and B73xMo17).
 
+# Merge data
 
 ```{bash, eval=FALSE}
 # Convert underscore in hyphens so the suffix stay in the header
@@ -4812,28 +6493,28 @@ df_RPM_long_unitas_mean  <- df_RPM_long_unitas_sum %>% group_by(category, sample
 col <-c("#7b3294","#c2a5cf","#a6dba0","#008837","gray")
 
 # Order categories
-df_RPM_long_unitas_mean$category <- 
+df_RPM_long_unitas_mean$category <-
   factor(df_RPM_long_unitas_mean$category, levels = c("rRNA", "tRNA", "PC_genes", "TEs", "others"))
 
 df_RPM_long_unitas_mean$sample <- factor(df_RPM_long_unitas_mean$sample, levels = c("B73", "Mo17", "B73xMo17", "b015", "B73xb015", "b131", "b131xB73", "b172", "b172xB73", "B73xb172", "m047", "m047xMo17"), ordered = T)
 
-
-
 ggplot(df_RPM_long_unitas_mean, aes(x = sample, y = RPM_mean, fill = category)) +
-  geom_bar(stat = "identity", position=position_dodge()) +
+  geom_bar(stat = "identity", position = position_dodge()) +
   geom_errorbar(aes(ymin = RPM_mean - sd, ymax = RPM_mean + sd),
     width = .5,
     position = position_dodge(.9)
   ) +
   theme_bw() +
-  scale_fill_manual(values=col) +
+  scale_fill_manual(values = col) +
   ylab("RPM") +
   xlab("") +
-  ggtitle("sRNA abundance per category") + 
-   theme(axis.text.x = element_text(color = "black"), 
-        axis.text.y = element_text(color = "black"), 
-        axis.ticks = element_line(color = "black")) + 
-  theme(plot.title = element_text(hjust = 0.5)) + 
+  ggtitle("sRNA abundance per category") +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = element_text(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
   scale_y_continuous(labels = scales::comma_format())
 
 ```
@@ -4844,6 +6525,12 @@ ggplot(df_RPM_long_unitas_mean, aes(x = sample, y = RPM_mean, fill = category)) 
 # sRNA-seq analysis
 
 # ###################################
+
+## Data
+
+sRNA-seq libraries were made with the NEBNext small RNA kit (cat. No. E7300, NEB).
+
+![](images/library_structure_sRNAseq.png)
 
 Samples were sequenced in three lanes, first replicate in one lane, and second and third in two other lanes.
 
@@ -4861,7 +6548,6 @@ Samples were sequenced in three lanes, first replicate in one lane, and second a
 ```
 
 Gather all fastq file in one place
-
 
 ```{bash, eval=FALSE}
 
@@ -4917,8 +6603,6 @@ m047xMo17_rep3.fq.gz
 
 ```
 
-
-
 ## Trimming
 
 ```{bash, eval=FALSE}
@@ -4956,7 +6640,6 @@ else
 fi
 
 ```
-
 
 Summary trimmed reads
 
@@ -5023,6 +6706,327 @@ source activate bioinfo
 multiqc .
 
 ```
+
+
+## A/T Mo17/B73 rRNA expression
+
+Call variation at the 45S loci (integrate R1-R9 to 45S). Use one copy to avoid multiple mapping => chr6:22379998..22388222 (- strand)
+
+```{bash, eval=FALSE}
+module load gcc bowtie samtools bcftools
+
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/rdna_annotation/45S_locus
+
+seqkit stats 45S_locus.fa
+file          format  type  num_seqs  sum_len  min_len  avg_len  max_len
+45S_locus.fa  FASTA   DNA          1    8,225    8,225    8,225    8,225
+
+samtools faidx 45S_locus.fa
+
+# Build index
+bowtie-build -f 45S_locus.fa 45S_locus
+
+```
+
+### Concatenate 3 replicates
+
+```{bash, eval=FALSE}
+cd /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/rdna_annotation/28S_B73
+
+module load gcc bowtie samtools bcftools
+
+find /mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/sRNA_data/trimmed_fastq/ \
+-name "*gz" -exec basename {} \; | cut -d_ -f1 | sort | uniq > list_samples.txt
+
+path_fastq="/mnt/ceph-hdd/workspaces/ws/scc_uanp_scholten/u14929-nor_nil_project/sRNA_data/trimmed_fastq"
+
+# Concatenate the 3 biological rep
+while read i; do
+  cat ${path_fastq}/${i}_rep*.fq.gz > trimmed_fastq/${i}.fq.gz
+done < list_samples.txt
+
+```
+
+
+### Mapping
+
+Map with 2 mismatches allowed (default bowtie: -n 2)
+
+```{bash, eval=FALSE}
+
+#!/bin/bash
+#
+#SBATCH --job-name=bowtie_mapping
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=16000
+#SBATCH --output=log/slurm.%j.%A.%a.out
+#SBATCH --error=log/slurm.%j.%A.%a.err
+#SBATCH --partition=scc-cpu
+#SBATCH --time=04:00:00
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-12
+
+module load gcc bowtie samtools
+
+input_file=$(sed -n ${SLURM_ARRAY_TASK_ID}p list_samples.txt)
+
+bowtie -p 8 -S -x 45S_locus \
+-q trimmed_fastq/${input_file}.fq.gz | \
+samtools view -F 4 -b |  samtools sort -o mapped_reads/${input_file}.bam - 
+
+samtools index mapped_reads/${input_file}.bam
+
+```
+
+Number of reads mapped in each sample
+
+```{bash, eval=FALSE}
+
+for i in *bam; do 
+  nb_reads=$(samtools flagstats $i | grep "in total" | cut -d' ' -f1)
+  echo -e "$i\t$nb_reads"
+done | sort -k2n
+
+B73xMo17.bam    7419756
+B73xb172.bam    9941871
+Mo17.bam        10400797
+B73xb015.bam    10938266
+b172.bam        11734433
+m047xMo17.bam   11967380
+b131xB73.bam    13913869
+b131.bam        16107874
+B73.bam 17562338
+b172xB73.bam    18097177
+b015.bam        19008769
+m047.bam        26394865
+
+```
+
+From 7,419,756 to 26,394,865 reads mapping to the 45S locus + R1-R9 region
+
+Create bedgraph files to visualize coverage on IGV
+
+```{bash, eval=FALSE}
+
+for i in *bam; do
+srun -p scc-cpu --time=00:10:00 bedtools genomecov -ibam $i -bg > ${i%%.*}.bedgraph &
+done
+```
+
+
+### 28S A/T polymorphism
+
+Position 6656 on this map
+
+```{bash, eval=FALSE}
+module load bcftools
+
+for i in mapped_reads/*bam; do
+  call=$(bcftools mpileup \
+      -d 30000000 \
+      -f 45S_locus.fa \
+      -r 45S_locus:6656-6656 \
+      -a FORMAT/DP,FORMAT/AD \
+      $i \
+      -Ou |
+  bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%DP\t%AD]\n')
+  name=$(basename "$i" | cut -d. -f1)
+  echo -e "$name\t$call" >> call_6656.txt
+done
+
+B73     45S_locus       6656    A       T,C,G   47845   1016,46414,352,63
+B73xMo17        45S_locus       6656    A       T,C,G   15425   5636,9678,92,19
+B73xb015        45S_locus       6656    A       T,C,G   26258   10246,15812,156,44
+B73xb172        45S_locus       6656    A       T,C,G   22248   9491,12609,118,30
+Mo17    45S_locus       6656    A       T,G,C   20240   19658,522,43,17
+b015    45S_locus       6656    A       T,G,C   39050   38672,239,120,19
+b131    45S_locus       6656    A       T,G,C   29358   28731,522,84,21
+b131xB73        45S_locus       6656    A       T,C,G   25517   15083,10274,106,54
+b172    45S_locus       6656    A       T,G,C   19780   18954,753,52,21
+b172xB73        45S_locus       6656    A       T,C,G   38668   14225,24166,221,56
+m047    45S_locus       6656    A       T,C,G   61650   719,60433,458,40
+m047xMo17       45S_locus       6656    A       T,C,G   28506   11259,17024,161,62
+
+
+```
+
+| sample    | DP     | A      | T      | %A  | %T  |
+|-----------|--------|--------|--------|-----|-----|
+| B73       | 47,845 | 1,016  | 46,414 | 2%  | 98% |
+| B73xMo17  | 15,425 | 5,636  | 9,678  | 37% | 63% |
+| B73xb015  | 26,258 | 10,246 | 15,812 | 39% | 61% |
+| B73xb172  | 22,248 | 9,491  | 12,609 | 43% | 57% |
+| Mo17      | 20,240 | 19,658 | 522    | 97% | 3%  |
+| b015      | 39,050 | 38,672 | 239    | 99% | 1%  |
+| b131      | 29,358 | 28,731 | 522    | 98% | 2%  |
+| b131xB73  | 25,517 | 15,083 | 10,274 | 59% | 41% |
+| b172      | 19,780 | 18,954 | 753    | 96% | 4%  |
+| b172xB73  | 38,668 | 14,225 | 24,166 | 37% | 63% |
+| m047      | 61,650 | 719    | 60,433 | 1%  | 99% |
+| m047xMo17 | 28,506 | 11,259 | 17,024 | 40% | 60% |
+
+
+
+### Variant calling
+
+```{bash, eval=FALSE}
+
+#!/bin/bash
+#
+#SBATCH --job-name=variant_calling
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --output=log/slurm.%j.%A.%a.out
+#SBATCH --error=log/slurm.%j.%A.%a.err
+#SBATCH --partition=scc-cpu
+#SBATCH --time=00:10:00
+#SBATCH --mail-type=END
+#SBATCH --mail-user=johan.zicola@uni-goettingen.de
+#SBATCH --array=1-12
+
+module load gcc bcftools
+
+input_file=$(sed -n ${SLURM_ARRAY_TASK_ID}p list_samples.txt)
+
+bcftools mpileup -d 26394865 -Ou -f 45S_locus.fa mapped_reads/${input_file}.bam  | \
+    bcftools call -mv -Oz -o variant_call/${input_file}.vcf.gz
+
+```
+
+Concatenate all vcf files
+
+```{bash, eval=FALSE}
+
+for i in *vcf.gz; do bcftools index $i; done
+
+\ls -1 *gz > file_list.txt
+
+bcftools merge --file-list file_list.txt -Oz -o merged_samples.vcf.gz
+
+# Rename samples 
+bcftools query -l merged_samples.vcf.gz > renames.txt
+sed -i 's/mapped_reads\///g' renames.txt
+sed -i 's/\.bam//g' renames.txt
+
+bcftools reheader -s renames.txt -o merged_samples.renamed.vcf.gz merged_samples.vcf.gz
+mv merged_samples.renamed.vcf.gz merged_samples.vcf.gz
+
+# Index
+bcftools index merged_samples.vcf.gz
+
+
+#bcftools view -r seq_28S:1814 merged_samples.vcf.gz > seq_28S_1814.vcf
+
+```
+
+
+Summarize 
+
+```{bash, eval=FALSE}
+zcat merged_samples.vcf.gz | python vcf_melt_py3.py  > merged_samples.vcf.melted.txt
+unix2dos merged_samples.vcf.melted.txt
+```
+
+Visualize the SNPs on IGV
+
+```{bash, eval=FALSE}
+
+# Create bed files with the features
+echo -e "45S_locus\t0\t1770\tR1_R9" >> annotation_45S_locus.bed
+echo -e "45S_locus\t2435\t4246\t18S" >> annotation_45S_locus.bed
+echo -e "45S_locus\t4465\t4621\t5_8S" >> annotation_45S_locus.bed
+echo -e "45S_locus\t4842\t8225\t28S" >> annotation_45S_locus.bed
+
+```
+
+
+Test
+
+```{bash, eval=FALSE}
+
+
+# Initial script
+
+bcftools mpileup -d 26394865 -Ou -f 45S_locus.fa mapped_reads/b172xB73.bam  | \
+    bcftools call -mv -Oz -o variant_call/b172xB73.vcf.gz
+
+bcftools index b172xB73.vcf.g
+
+bcftools view -H -r 45S_locus:6656 variant_call/b172xB73.vcf.gz
+45S_locus       6656    .       A       T       14.6957 .       DP=38668;VDB=0.0180389;SGB=-0.693147;RPBZ=-6.0042;MQBZ=0;MQSBZ=0;BQBZ=-112.49;SCBZ=0;MQ0F=0;AC=2;AN=2;DP4=14213,12,24442,1;MQ=20      GT:PL   1/1:42,3,0
+
+
+# Append AD and DP as annotation (250 reads a default for calling)
+bcftools mpileup \
+    -f 45S_locus.fa \
+    -a FORMAT/AD,FORMAT/DP \
+    -Ou mapped_reads/b172xB73.bam | \
+bcftools call -mv -Oz -o b172xB73.vcf.gz
+
+bcftools index b172xB73.vcf.g
+
+bcftools view -H -r 45S_locus:6656 b172xB73.vcf.gz
+45S_locus       6656    .       A       T       14.4264 .       DP=244;VDB=1;SGB=-0.693147;RPBZ=2.94328;MQBZ=0;BQBZ=-4.64092;SCBZ=0;MQ0F=0;AC=2;AN=2;DP4=86,0,158,0;MQ=20       GT:PL:DP:AD  1/1:42,6,0:244:86,156
+
+# 86 reads support A and 156 support T
+
+# Increase depth  
+bcftools mpileup \
+    -f 45S_locus.fa \
+    -d 30000000 \
+    -a FORMAT/AD,FORMAT/DP \
+    -Ou mapped_reads/b172xB73.bam | \
+bcftools call -mv -Oz -o b172xB73.vcf.gz
+
+bcftools index b172xB73.vcf.g
+
+bcftools view -H -r 45S_locus:6656 b172xB73.vcf.gz
+45S_locus       6656    .       A       T       14.6957 .       DP=38668;VDB=0.0180389;SGB=-0.693147;RPBZ=-6.0042;MQBZ=0;MQSBZ=0;BQBZ=-112.49;SCBZ=0;MQ0F=0;AC=2;AN=2;DP4=14213,12,24442,1;MQ=20      GT:PL:DP:AD     1/1:42,3,0:38668:14225,24166
+
+# 14225 reads support A and 24166 support T
+```
+
+The DP and AD field was added at the end
+
+
+```{bash, eval=FALSE}
+
+bcftools mpileup \
+    -f 45S_locus.fa \
+    -r 45S_locus:6656-6656 \
+    -a FORMAT/DP,FORMAT/AD \
+    mapped_reads/b172xB73.bam \
+    -Ou |
+bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%DP\t%AD]\n'
+45S_locus       6656    A       T,C,G   287     32,247,7,1
+
+
+bcftools mpileup \
+    -f 45S_locus.fa \
+    -r 45S_locus:6656-6656 \
+    mapped_reads/b172xB73.bam \
+    -Ou |
+bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%DP4\n'
+Error: no such tag defined in the VCF header: INFO/DP4
+
+
+bcftools mpileup \
+    -f 45S_locus.fa \
+    -r 45S_locus:6656-6656 \
+    -a FORMAT/DP,FORMAT/AD \
+    -d 30000000 \
+    mapped_reads/b172xB73.bam \
+    -Ou |
+bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%DP\t%AD]\n'
+45S_locus       6656    A       T,C,G   38668   14225,24166,221,56
+
+```
+
+
+
 
 
 ## Mapping to B73 genome
@@ -5265,6 +7269,8 @@ p <- ggplot(pcaData, aes(PC1, PC2, label=genotype, color=genotype)) +
 p + geom_text(size = 3.5)
 
 ```
+![](images/PCR_sRNAseq_samples.png)
+
 
 ```{r}
 # Create a DESeqDataSet object
@@ -5294,40 +7300,12 @@ p <- ggplot(pcaData, aes(PC1, PC2, label=sample, color=lane)) +
 p + geom_text(size = 3)
 
 ```
+
+![](images/PCR_sRNAseq_lanes.png)
+
 Lane1 was sequencing on older BGISEQ-500 platform and cluster aparts from lane2 and lane3 (DNBSEQ-G400).
 
-It could also be that the library processing was different (done later for lane2 and lane3).
-
-
-
-```{r}
-# Create a DESeqDataSet object
-dds <- DESeqDataSetFromMatrix(countData = cts,
-                              colData = coldata,
-                              design= ~NOR)
-
-# Variance stabilizing transformation
-vsd <- vst(dds, blind=FALSE)
-
-# Create PCA
-pcaData <- plotPCA(vsd, intgroup=c("sample", "NOR"), returnData=TRUE)
-
-# Get percentage variation
-percentVar <- round(100 * attr(pcaData, "percentVar"))
-
-p <- ggplot(pcaData, aes(PC1, PC2, color=NOR)) +  
-  xlab(paste0("PC1: ",percentVar[1],"% variance")) + 
-  ylab(paste0("PC2: ",percentVar[2],"% variance")) +  
-  theme_bw() +  
-  ggtitle("PCA sRNA expression") + 
-  theme(axis.text.x = element_text(color="black"),
-        axis.text.y = element_text(color="black"),
-        axis.ticks = element_line(color = "black")) + 
-  theme(plot.title = element_text(hjust = 0.5))
-
-p + geom_point(size = 3)
-
-```
+It could also be that the library processing was different (done later for lane2 and lane3) although the same kit was used.
 
 
 ## Reads per million analysis
@@ -5459,6 +7437,8 @@ ggplot(aes(x = size, y = RPM_mean, fill = genotype)) +
   scale_y_continuous(labels = scales::comma_format())
 
 ```
+
+
 ### Sequence diversity
 
 ```{r}
@@ -6266,11 +8246,24 @@ EnhancedVolcano(res,
 )
 ```
 
+
+
+# ##################################
+
+
+
 #.
 
 # ##################################
 # Degradome analysis
 # ##################################
+
+# Data
+
+Degradome library was made according to [Li et al., 2018](https://doi.org/10.1186/s13007-019-0524-7).
+
+![](images/library_structure_PARE.png)
+
 
 Rename files and move them to workspace
 
